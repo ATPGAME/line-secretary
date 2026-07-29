@@ -3,7 +3,7 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { verifySignature } from './lib/line.js';
-import { applyTool } from './lib/brain.js';
+import { applyTool, toCE } from './lib/brain.js';
 
 const secret = 'test-secret';
 const body = JSON.stringify({ events: [] });
@@ -43,5 +43,12 @@ for (const t of ['ราคาเท่าไหร่', 'ของถึงเ�
 for (const t of ['รับทราบครับ', 'โอนแล้วนะ', 'ขอบคุณมาก']) {
   assert.ok(!QUESTION.test(t), `ไม่ใช่คำถาม: ${t}`);
 }
+
+// สลิปไทยเป็น พ.ศ. — ถ้าไม่แปลง รายจ่ายจะไปโผล่อีก 543 ปีข้างหน้า แล้วยอดเดือนนี้จะไม่นับ
+assert.equal(toCE('2569-07-29 14:32'), '2026-07-29 14:32', 'พ.ศ. ต้องถูกแปลงเป็น ค.ศ.');
+assert.equal(toCE('2026-07-29 14:32'), '2026-07-29 14:32', 'ค.ศ. ต้องไม่ถูกแตะ');
+assert.equal(toCE('2027-01-01'), '2027-01-01', 'ปีหน้าต้องไม่ถูกลบ 543');
+assert.equal(toCE(null), null);
+assert.equal(toCE('เมื่อวาน'), 'เมื่อวาน', 'อ่านไม่ออกก็ปล่อยผ่าน ไม่พัง');
 
 console.log('✅ ผ่านหมด');
