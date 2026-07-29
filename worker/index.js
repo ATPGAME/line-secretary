@@ -16,7 +16,7 @@ const hourBangkok = () =>
 async function report() {
   const { rows: groups } = await q(
     `select * from watched
-      where active and $1 = any(report_hours)
+      where active and report_to is not null and $1 = any(report_hours)
         and (last_report_at is null or last_report_at < now() - interval '2 hours')`,
     [hourBangkok()]
   );
@@ -87,7 +87,7 @@ async function checkSla() {
             w.source_id, w.title, w.report_to, w.sla_minutes,
             m.line_message_id, m.text, m.ts
        from watched w join messages m on m.source_id = w.source_id
-      where w.active and w.sla_minutes > 0 and m.text is not null
+      where w.active and w.report_to is not null and w.sla_minutes > 0 and m.text is not null
       order by w.source_id, m.ts desc`
   );
 

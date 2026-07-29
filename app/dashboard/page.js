@@ -11,7 +11,7 @@ export default async function Dashboard({ searchParams }) {
 
   const [{ rows: states }, { rows: groups }, { rows: reports }, { rows: expenses }, { rows: orders }] = await Promise.all([
     q('select source_id, data from state order by updated_at desc'),
-    q('select w.*, (select count(*) from messages m where m.source_id = w.source_id) as msgs from watched order by active desc'),
+    q('select w.*, (select count(*) from messages m where m.source_id = w.source_id) as msgs from watched w order by w.active desc'),
     q(`select r.*, w.title,
               to_char(r.created_at at time zone 'Asia/Bangkok', 'YYYY-MM-DD') as day,
               to_char(r.created_at at time zone 'Asia/Bangkok', 'HH24:MI') as at,

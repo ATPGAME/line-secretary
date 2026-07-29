@@ -50,19 +50,42 @@ async function handle(ev) {
   if (ev.type !== 'message') return;
   const isDirect = src.type === 'user';
 
+  // กลุ่มที่ยังไม่มีในทะเบียน (เชิญบอทเข้ามาก่อนจะ deploy เสร็จ ก็เลยไม่ได้ event join) → ลงทะเบียนให้เอง
+  if (!isDirect) {
+    await q(
+      `insert into watched (source_id, report_to) values ($1, $2) on conflict (source_id) do nothing`,
+      [sourceId, process.env.OWNER_USER_ID || null]
+    );
+    // ตั้ง OWNER ทีหลัง — เติมให้กลุ่มที่ยังว่างอยู่
+    if (process.env.OWNER_USER_ID)
+      await q('update watched set report_to = $2 where source_id = $1 and report_to is null', [
+        sourceId, process.env.OWNER_USER_ID,
+      ]);
+  }
+
   // ── รูป: อ่านสลิปให้ (เฉพาะแชทส่วนตัว — ในกลุ่มรูปเยอะเกินกว่าจะอ่านทุกใบ)
   if (ev.message.type === 'image') {
     if (!isDirect) return;
     const msgId = await ingest({ ...base(ev, src, sourceId), kind: 'image', text: null });
     if (!msgId) return;
-    return handleSlip(ev, ctx, msgId);
+    try {
+      return await handleSlip(ev, ctx, msgId);
+    } catch (err) {
+      console.error('slip failed:', err.message);
+      return reply(ev.replyToken, 'อ่านรูปไม่สำเร็จครับ ลองส่งใหม่ หรือพิมพ์บอกก็ได้ เช่น "จ่ายค่ากาแฟ 120"');
+    }
   }
 
   // ── เสียง: ถอดเป็นข้อความแล้วทำงานต่อเหมือนพิมพ์เอง
   let text = ev.message.text;
   if (ev.message.type === 'audio') {
     if (!isDirect) return;
-    text = await transcribe(await getContent(ev.message.id));
+    try {
+      text = await transcribe(await getContent(ev.message.id));
+    } catch (err) {
+      console.error('stt failed:', err.message);
+      return reply(ev.replyToken, 'ถอดเสียงไม่สำเร็จครับ ลองพิมพ์มาแทนได้เลย');
+    }
     if (!text) return reply(ev.replyToken, 'ฟังไม่ออกครับ ลองพูดใหม่หรือพิมพ์มาก็ได้');
   } else if (ev.message.type !== 'text') {
     return;

@@ -113,9 +113,9 @@ node scripts/check.mjs db
 npx vercel@latest login
 npx vercel@latest --prod --yes
 ```
-3. ส่งค่าทุกตัวขึ้น Vercel — อ่านจาก `.env.local` แล้วรันให้ครบทุกตัว (`LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `OPENROUTER_API_KEY`, `DATABASE_URL`, `DASHBOARD_KEY`):
+3. ส่งค่าทั้งชุดขึ้น Vercel ด้วยคำสั่งเดียว (อ่านจาก `.env.local` ส่งผ่าน stdin — ค่าไม่โผล่ในหน้าจอ):
 ```bash
-printf '%s' "$ค่า" | npx vercel@latest env add ชื่อตัวแปร production
+node scripts/push-env.mjs vercel
 ```
 4. deploy ซ้ำให้ค่ามีผล:
 ```bash
@@ -136,7 +136,10 @@ node scripts/setup.mjs https://โดเมนที่ได้
 
 แล้วบอกผู้ใช้: "เปิดแท็บ Messaging API แล้วสแกน **QR code** ด้วยมือถือ กดเพิ่มเพื่อน แล้วทักบอทว่า **ไอดี** ครับ"
 → บอทจะตอบ userId กลับมา ให้ผู้ใช้ก๊อปมาวางในแชท
-→ เขียนลง `.env.local` เป็น `OWNER_USER_ID` แล้วส่งขึ้น Vercel + deploy ซ้ำ
+→ เขียนลง `.env.local` เป็น `OWNER_USER_ID` แล้ว:
+```bash
+node scripts/push-env.mjs vercel && npx vercel@latest --prod --yes
+```
 
 **ถึงตรงนี้เลขาใช้งานได้แล้ว** — ให้ผู้ใช้ลองทันที 3 อย่าง แล้วรอฟังผลจากเขา:
 - พิมพ์ `จดไว้ รหัส wifi บ้าน 12345678`
@@ -157,7 +160,10 @@ node scripts/setup.mjs https://โดเมนที่ได้
    npx @railway/cli up
    ```
 3. ตั้ง **Start Command** เป็น `node worker/index.js` (Settings → Deploy)
-4. ใส่ variables ชุดเดียวกับ `.env.local` ทั้งหมด
+4. ส่งค่าขึ้นด้วยคำสั่งเดียว:
+   ```bash
+   node scripts/push-env.mjs railway
+   ```
 5. ดู Logs ต้องขึ้น `worker started`
 
 จากนั้นให้ผู้ใช้เชิญบอทเข้ากลุ่มทดสอบ → บอทจะแนะนำตัว → ลองพิมพ์ในกลุ่มว่า `เลขา สรุปให้หน่อย`

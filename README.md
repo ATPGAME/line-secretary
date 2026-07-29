@@ -93,6 +93,7 @@ Claude จะพาทำทีละขั้นแบบ wizard **9 ขั้�
 | [lib/schema.js](lib/schema.js) | ตารางทั้งหมด — สร้างให้ตอนติดตั้ง |
 | [scripts/setup.mjs](scripts/setup.mjs) | ติดตั้งอัตโนมัติ — สร้างตาราง + ตั้ง webhook + ยิงทดสอบ |
 | [scripts/check.mjs](scripts/check.mjs) | ตรวจทีละบริการว่าค่าที่ใส่ใช้ได้จริง (`line` / `openrouter` / `db` / `vercel <url>` / `all`) |
+| [scripts/push-env.mjs](scripts/push-env.mjs) | ส่งค่าจาก `.env.local` ขึ้น Vercel/Railway ทั้งชุด (ค่าไม่โผล่บนหน้าจอ) |
 | [INSTALL.md](INSTALL.md) | wizard 9 ขั้น — คู่มือสำหรับ Claude Code ที่ช่วยผู้ใช้ติดตั้ง |
 
 `npm test` = เช็คลายเซ็น LINE กับตรรกะ to-do (ไม่ต้องต่อเน็ต ไม่ต้องมี DB)
