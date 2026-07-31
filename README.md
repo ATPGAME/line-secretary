@@ -42,8 +42,8 @@
 | [manager.line.biz](https://manager.line.biz) | สร้าง OA + เปิด Messaging API → ได้ Channel secret | บัญชี LINE |
 | [developers.line.biz](https://developers.line.biz) | Channel access token (กด Issue) | บัญชีเดียวกัน |
 | [openrouter.ai](https://openrouter.ai) | API key | บัตร (เติม $5) |
-| [neon.tech](https://neon.tech) | Connection string (เลือกอันที่เขียนว่า **Pooled**) | GitHub |
 | [vercel.com](https://vercel.com) | — (แค่สมัครไว้) | GitHub |
+| Neon | **ไม่ต้องสมัครแยก** — กดสร้างในหน้า Vercel → Storage ตอนติดตั้ง | — |
 | [railway.app](https://railway.app) *(ทำทีหลังได้)* | — | บัตร $5/เดือน |
 
 ⚠️ **ข้อที่คนพลาดเยอะสุด** — ที่ [manager.line.biz](https://manager.line.biz) → **การตั้งค่า → การตอบกลับ** → **ปิด** "ข้อความตอบกลับอัตโนมัติ" กับ "ข้อความต้อนรับ" (ถ้าไม่ปิด บอทจะเงียบเพราะโดนข้อความสำเร็จรูปแย่งตอบ)

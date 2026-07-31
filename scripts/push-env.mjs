@@ -6,10 +6,49 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const target = process.argv[2];
-if (!['vercel', 'railway'].includes(target)) {
-  console.log('ใช้: node scripts/push-env.mjs vercel|railway');
+if (!['vercel', 'railway', 'pull'].includes(target)) {
+  console.log('ใช้: node scripts/push-env.mjs vercel|railway|pull');
+  console.log('  pull = ดึงค่าที่ Vercel สร้างให้ (เช่น DATABASE_URL ของ Neon) ลงมาใส่ .env.local');
   process.exit(1);
 }
+
+// ── ดึงค่าจาก Vercel ลงมาเติม .env.local โดยไม่ทับค่าที่มีอยู่
+// (ห้ามใช้ `vercel env pull .env.local` ตรง ๆ เพราะมันเขียนทับทั้งไฟล์ ค่าที่ยังไม่ได้ push จะหายหมด)
+if (target === 'pull') {
+  const tmp = '.env.from-vercel';
+  const r = spawnSync('npx', ['vercel@latest', 'env', 'pull', tmp, '--yes'], { encoding: 'utf8', stdio: 'inherit' });
+  if (r.status !== 0) {
+    console.log('❌ ดึงค่าจาก Vercel ไม่สำเร็จ — ล็อกอินและ deploy ไปแล้วหรือยัง');
+    process.exit(1);
+  }
+  const pulled = fs.readFileSync(tmp, 'utf8');
+  let local = fs.existsSync('.env.local') ? fs.readFileSync('.env.local', 'utf8') : '';
+  let added = 0;
+
+  for (const key of ['DATABASE_URL', 'POSTGRES_URL']) {
+    const m = pulled.match(new RegExp(`^${key}\\s*=\\s*(.+)$`, 'm'));
+    if (!m) continue;
+    const value = m[1].trim().replace(/^["']|["']$/g, '');
+    if (!value || value.includes('...')) continue;
+    // มีบรรทัดนี้อยู่แล้ว (อาจว่างหรือเป็นตัวอย่าง) → แทนที่ ไม่มี → เติมท้าย
+    local = new RegExp(`^${key}\\s*=.*$`, 'm').test(local)
+      ? local.replace(new RegExp(`^${key}\\s*=.*$`, 'm'), `${key}=${value}`)
+      : `${local.replace(/\n*$/, '')}\n${key}=${value}\n`;
+    console.log(`✅ ได้ ${key} จาก Vercel แล้ว`);
+    added++;
+    break; // เอาตัวเดียวพอ DATABASE_URL มาก่อน
+  }
+
+  fs.writeFileSync('.env.local', local);
+  fs.unlinkSync(tmp);
+  if (!added) {
+    console.log('❌ ไม่เจอ DATABASE_URL บน Vercel — สร้าง Neon ในหน้า Vercel → Storage แล้วหรือยัง');
+    process.exit(1);
+  }
+  console.log('ค่าอื่นใน .env.local ไม่ถูกแตะ');
+  process.exit(0);
+}
+
 if (!fs.existsSync('.env.local')) {
   console.log('❌ ไม่มีไฟล์ .env.local');
   process.exit(1);

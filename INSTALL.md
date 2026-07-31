@@ -103,42 +103,49 @@ node scripts/check.mjs openrouter
 ```
 ถ้าบอกว่าเครดิตหมด ให้กลับไปเติมเงินก่อน
 
-## ขั้น 6/9 — สมัครฐานข้อมูล Neon (ความจำ)
+## ขั้น 6/9 — เอาขึ้นเว็บจริง (Vercel)
 
-1. เปิด https://neon.tech → **Sign up with GitHub** (ถ้ายังไม่มีบัญชี GitHub ให้สมัครที่ github.com ก่อน)
-2. **Create project** → ชื่ออะไรก็ได้ → region เลือก **Singapore** (ใกล้ไทยสุด)
-3. หน้า Connection string → **เลือกอันที่เขียนว่า Pooled connection** → ก๊อปมาวางในแชท
-   → เขียนลง `.env.local` เป็น `DATABASE_URL`
-
-ย้ำเรื่อง Pooled: "ถ้าเลือกผิดอันจะเจอ error too many connections ทีหลัง"
-
-**สร้างตาราง + ตรวจ:**
-```bash
-node scripts/setup.mjs
-node scripts/check.mjs db
-```
-
-## ขั้น 7/9 — เอาขึ้นเว็บจริง (Vercel)
-
-1. ให้ผู้ใช้สมัคร https://vercel.com ด้วยปุ่ม **Continue with GitHub**
+1. ให้ผู้ใช้สมัคร https://vercel.com ด้วยปุ่ม **Continue with GitHub** (ถ้ายังไม่มีบัญชี GitHub ให้สมัคร github.com ก่อน)
 2. รันให้เขา:
 ```bash
 npx vercel@latest login
 npx vercel@latest --prod --yes
 ```
-3. ส่งค่าทั้งชุดขึ้น Vercel ด้วยคำสั่งเดียว (อ่านจาก `.env.local` ส่งผ่าน stdin — ค่าไม่โผล่ในหน้าจอ):
+ตอบคำถามที่ CLI ถามด้วยค่า default ได้หมด (กด Enter รัว ๆ)
+
+3. deploy รอบแรกยังใช้ไม่ได้ — ปกติ เพราะยังไม่มีค่าอะไรเลย บอกผู้ใช้ไว้ก่อนเขาจะได้ไม่ตกใจ
+   **จดโดเมนที่ได้ลง `.setup-progress.md`**
+
+## ขั้น 7/9 — สร้างฐานข้อมูล Neon จากในหน้า Vercel
+
+**ไม่ต้องสมัคร neon.tech แยก** — สร้างจากในโปรเจค Vercel ได้เลย แล้ว `DATABASE_URL` จะถูกใส่ให้อัตโนมัติ
+
+บอกผู้ใช้:
+1. เปิด https://vercel.com → เลือกโปรเจคที่เพิ่ง deploy → แท็บ **Storage**
+2. กด **Create Database** → เลือก **Neon** (Serverless Postgres) → Continue
+3. region เลือก **Singapore** (ใกล้ไทยสุด) → **Create**
+
+จากนั้นรันให้เขา — ดึงค่าที่ Vercel สร้างให้ลงมาใส่ `.env.local` (ค่าอื่นไม่ถูกแตะ):
+```bash
+node scripts/push-env.mjs pull
+```
+
+ส่งค่าที่เหลือขึ้น Vercel แล้ว deploy ซ้ำ (อ่านจาก `.env.local` ส่งผ่าน stdin — ค่าไม่โผล่บนหน้าจอ):
 ```bash
 node scripts/push-env.mjs vercel
-```
-4. deploy ซ้ำให้ค่ามีผล:
-```bash
 npx vercel@latest --prod --yes
 ```
 
-**ตรวจก่อนไปต่อ** (เอาโดเมนที่ได้มาใส่ และบันทึกลง `.setup-progress.md`):
+**สร้างตาราง + ตรวจ:**
 ```bash
+node scripts/setup.mjs
+node scripts/check.mjs db
 node scripts/check.mjs vercel https://โดเมนที่ได้
 ```
+ทั้ง 2 ตัวหลังต้องขึ้น ✅ ก่อนไปต่อ
+
+> ห้ามใช้ `vercel env pull .env.local` ตรง ๆ เด็ดขาด — มันเขียนทับทั้งไฟล์ ค่า LINE/OpenRouter ที่ยังไม่ได้ push จะหายหมด
+> ใช้ `node scripts/push-env.mjs pull` ที่เติมเฉพาะ `DATABASE_URL` แทน
 
 ## ขั้น 8/9 — ต่อ LINE เข้ากับเว็บ (อัตโนมัติ)
 
