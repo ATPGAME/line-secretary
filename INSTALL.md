@@ -197,20 +197,36 @@ npx vercel@latest --prod --yes
 บอกผู้ใช้ว่า "ของจริงจะยิงเองทุกเช้าประมาณ 8 โมงครับ"
 
 ### ถ้าเลือก Railway
-1. สมัคร https://railway.app → Login with GitHub → ผูกบัตร (Hobby $5/เดือน)
-2. ```bash
-   npx @railway/cli login
-   npx @railway/cli init
-   npx @railway/cli up
-   ```
-3. ตั้ง **Start Command** เป็น `node worker/index.js` (Settings → Deploy)
-4. ส่งค่าขึ้นด้วยคำสั่งเดียว:
-   ```bash
-   node scripts/push-env.mjs railway
-   ```
-5. ดู Logs ต้องขึ้น `worker started`
+ทำผ่าน CLI ได้ทั้งหมด **ไม่ต้องกดอะไรในเว็บ Railway เลย** (Start Command อยู่ใน `railway.json` ของโปรเจคแล้ว)
+
+1. ให้ผู้ใช้สมัคร https://railway.app → Login with GitHub → ผูกบัตร (Hobby $5/เดือน)
+2. ล็อกอิน — คำสั่งนี้จะเปิดเบราว์เซอร์ให้ผู้ใช้กดยืนยัน 1 ครั้ง (เป็นขั้นเดียวที่ CLI ทำแทนไม่ได้):
+```bash
+npx @railway/cli login
+```
+บอกเขาว่า "เดี๋ยวเบราว์เซอร์จะเด้งขึ้นมา กด Authorize แล้วกลับมาที่นี่ครับ"
+
+3. สร้างโปรเจค + deploy:
+```bash
+npx @railway/cli init -n line-secretary
+npx @railway/cli up -y -d
+```
+(`-d` = ไม่ต้องค้างดู log · `railway.json` บอกให้รัน `node worker/index.js` และข้าม build ให้แล้ว)
+
+4. ส่งค่าขึ้น:
+```bash
+node scripts/push-env.mjs railway
+```
+
+5. เช็คว่าขึ้นจริง:
+```bash
+npx @railway/cli logs
+```
+ต้องเห็น `worker started · ตื่นทุก 10 นาที` (ถ้ายังไม่ขึ้น รอ 1 นาทีแล้วดูใหม่ — Railway กำลัง build อยู่)
 
 จากนั้นให้ผู้ใช้เชิญบอทเข้ากลุ่มทดสอบ → บอทจะแนะนำตัว → ลองพิมพ์ในกลุ่มว่า `เลขา สรุปให้หน่อย`
+
+> ถ้า Railway ขึ้นมาแล้ว **ปิด cron ของ Vercel ทิ้ง** จะได้ไม่รายงานซ้ำสองรอบ: ลบ `vercel.json` แล้ว deploy Vercel ใหม่
 
 ---
 

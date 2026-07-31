@@ -100,6 +100,7 @@ Claude จะพาทำทีละขั้นแบบ wizard **10 ขั้
 | [lib/jobs.js](lib/jobs.js) | งานตามรอบ — สรุปกลุ่ม + ออเดอร์ + SLA watcher (ใช้ร่วมกันทั้ง 2 แบบ) |
 | [worker/index.js](worker/index.js) | ตัววนทุก 10 นาที (Railway) |
 | [app/api/cron/route.js](app/api/cron/route.js) | ตัวรับ cron วันละครั้ง (Vercel แบบฟรี) |
+| [vercel.json](vercel.json) / [railway.json](railway.json) | ตั้งเวลา cron / Start Command — มีให้แล้ว ไม่ต้องไปกดในเว็บ |
 | [lib/brain.js](lib/brain.js) | เรียก OpenRouter + เครื่องมือ 6 ตัว (เพิ่มเครื่องมือใหม่ที่นี่) + สรุป/อ่านสลิป/ถอดเสียง |
 | [lib/db.js](lib/db.js) | Neon — ความจำ + เก็บข้อความดิบ |
 | [lib/line.js](lib/line.js) | ตรวจลายเซ็น + reply + push |
