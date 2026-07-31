@@ -39,13 +39,14 @@
 
 | สมัครที่ | ได้อะไรมา | เตรียม |
 |---|---|---|
-| [developers.line.biz](https://developers.line.biz) | Channel secret + Channel access token | บัญชี LINE |
+| [manager.line.biz](https://manager.line.biz) | สร้าง OA + เปิด Messaging API → ได้ Channel secret | บัญชี LINE |
+| [developers.line.biz](https://developers.line.biz) | Channel access token (กด Issue) | บัญชีเดียวกัน |
 | [openrouter.ai](https://openrouter.ai) | API key | บัตร (เติม $5) |
 | [neon.tech](https://neon.tech) | Connection string (เลือกอันที่เขียนว่า **Pooled**) | GitHub |
 | [vercel.com](https://vercel.com) | — (แค่สมัครไว้) | GitHub |
 | [railway.app](https://railway.app) *(ทำทีหลังได้)* | — | บัตร $5/เดือน |
 
-⚠️ **ข้อที่คนพลาดเยอะสุด** — เข้า [manager.line.biz](https://manager.line.biz) → OA ตัวเอง → **การตั้งค่า → การตอบกลับ** → **ปิด** "ข้อความตอบกลับอัตโนมัติ" กับ "ข้อความต้อนรับ" (คนละเว็บกับข้างบน ถ้าไม่ปิด บอทจะเงียบเพราะโดนข้อความสำเร็จรูปแย่งตอบ)
+⚠️ **ข้อที่คนพลาดเยอะสุด** — ที่ [manager.line.biz](https://manager.line.biz) → **การตั้งค่า → การตอบกลับ** → **ปิด** "ข้อความตอบกลับอัตโนมัติ" กับ "ข้อความต้อนรับ" และ **เปิด** Webhook (ถ้าไม่ปิด บอทจะเงียบเพราะโดนข้อความสำเร็จรูปแย่งตอบ)
 
 ### 2. เปิด Claude Code แล้ววาง prompt นี้
 

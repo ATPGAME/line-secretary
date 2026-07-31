@@ -61,8 +61,9 @@
 
 | ลำดับ | เว็บ | ได้อะไร | จุดที่จะติด |
 |---|---|---|---|
-| 1 | developers.line.biz | Channel secret + access token | ต้อง Create **provider** ก่อนถึงจะ create channel ได้ · token ต้องกด **Issue** ก่อนถึงจะมี |
-| 2 | manager.line.biz | (ไม่ได้อะไร แต่ต้องเข้า) | **ปิดข้อความอัตโนมัติ** — คนละเว็บกับข้อ 1 นักเรียนจะงงตรงนี้ทุกรุ่น |
+| 1 | manager.line.biz | สร้าง OA → เปิด Messaging API → ได้ **Channel secret** | ที่นี่คือที่สร้าง OA ไม่ใช่ developers · ตอนเปิด Messaging API ต้องเลือก/สร้าง **provider** |
+| 2 | manager.line.biz (หน้าเดิม) | (ไม่ได้อะไร แต่ต้องตั้ง) | **ปิดข้อความอัตโนมัติ + ข้อความต้อนรับ · เปิด Webhook** — นักเรียนจะลืมตรงนี้ทุกรุ่น |
+| 2.5 | developers.line.biz | **Channel access token** (กด Issue) | ล็อกอินบัญชีเดียวกัน จะเห็น channel ที่สร้างจาก manager แล้ว |
 | 3 | openrouter.ai | API key | key ขึ้นให้ดูครั้งเดียว ต้องก๊อปทันที · ต้องเติมเงินก่อนถึงใช้ได้ |
 | 4 | neon.tech | connection string | ต้องเลือกอันที่เขียนว่า **Pooled** ไม่ใช่อันแรกที่เห็น |
 | 5 | vercel.com | (แค่สมัคร) | สมัครด้วยปุ่ม Continue with GitHub เท่านั้น จะได้ไม่ต้องผูกทีหลัง |
