@@ -68,5 +68,7 @@ if (result.statusCode === 200) {
   process.exit(1);
 }
 
-console.log('\n🎉 เสร็จแล้ว — แอดเพื่อน OA แล้วทักว่า "ไอดี" เพื่อเอา userId ไปใส่ OWNER_USER_ID');
+console.log('\n⚠️  อย่าลืมเปิดสวิตช์ Webhook — ตอนนี้เพิ่งมี URL แล้ว LINE ถึงจะยอมให้เปิด');
+console.log('   manager.line.biz → การตั้งค่า → การตอบกลับ → เปิด Webhook');
+console.log('\n🎉 จากนั้นแอดเพื่อน OA แล้วทักว่า "ไอดี" เพื่อเอา userId ไปใส่ OWNER_USER_ID');
 process.exit(0);
