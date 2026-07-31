@@ -43,7 +43,10 @@ node -e "console.log(require('crypto').randomBytes(12).toString('hex'))"
 ## ขั้น 2/9 — สร้าง LINE OA
 
 **เริ่มที่ https://manager.line.biz** (LINE Official Account Manager) — ที่นี่คือที่สร้าง OA และตั้งค่าการตอบกลับ
-ส่วน developers.line.biz เอาไว้เอากุญแจอย่างเดียว ค่อยไปขั้นถัดไป
+
+> **ทำไมต้องเริ่มที่นี่:** พอสร้าง OA ที่ manager แล้วกดเปิด Messaging API มันจะ **สมัคร developer account + สร้าง channel ให้อัตโนมัติ**
+> ผู้ใช้ไม่ต้องไปสมัคร developers.line.biz แยกเลย (ถ้าเริ่มจากฝั่ง developers ก่อน จะต้องสร้าง provider + channel เองแล้วสับสนว่า OA ตัวไหนคู่กับ channel ไหน)
+> ถ้าผู้ใช้ถามว่า "ต้องสมัคร developer ก่อนไหม" ตอบได้เลยว่าไม่ต้อง
 
 พูดกับผู้ใช้ทีละข้อ:
 1. เปิด https://manager.line.biz แล้วเข้าสู่ระบบด้วยบัญชี LINE ที่ใช้ในมือถือ
