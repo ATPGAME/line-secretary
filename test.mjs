@@ -3,7 +3,8 @@
 import assert from 'node:assert';
 import crypto from 'node:crypto';
 import { verifySignature } from './lib/line.js';
-import { applyTool, toCE } from './lib/brain.js';
+import { applyTool, toCE, dueTime } from './lib/brain.js';
+import { digestText } from './lib/jobs.js';
 
 const secret = 'test-secret';
 const body = JSON.stringify({ events: [] });
@@ -59,6 +60,27 @@ assert.equal(toCE('เมื่อวาน'), 'เมื่อวาน', 'อ�
   assert(!mayReply('Ustranger', { OWNER_USER_ID: OWNER }), 'คนอื่นต้องไม่ได้คำตอบ');
   assert(mayReply('Ustranger', {}), 'ยังไม่ตั้ง OWNER_USER_ID (ตอนติดตั้ง) = ตอบได้');
   assert(mayReply('Ustranger', { OWNER_USER_ID: OWNER, REPLY_TO_ALL: '1' }), 'REPLY_TO_ALL=1 = ตอบทุกคน');
+}
+
+// ── กำหนดส่ง: AI จดมาเป็นเวลาไทย แต่เซิร์ฟเวอร์เดินเป็น UTC — พลาดตรงนี้คือเตือนช้า 7 ชั่วโมง
+assert.equal(dueTime('2026-08-27 10:00').toISOString(), '2026-08-27T03:00:00.000Z', '10 โมงไทย = 03:00 UTC');
+assert.equal(dueTime('2026-08-27').toISOString(), '2026-08-27T02:00:00.000Z', 'บอกแค่วัน = เตือน 9 โมงเช้าไทย');
+assert.equal(dueTime('2026-08-27T10:00+07:00').toISOString(), '2026-08-27T03:00:00.000Z', 'มีเขตเวลามาแล้วห้ามบวกซ้ำ');
+assert.equal(dueTime('พรุ่งนี้'), null, 'อ่านไม่ออกต้องไม่พัง');
+assert.equal(dueTime(null), null);
+assert.equal(dueTime(''), null);
+
+// ── รายงานรวมใบเดียว: LINE ตัดที่ 5000 ตัวอักษร ต้องตัดเองและบอกว่าเหลืออีกกี่กลุ่ม
+{
+  const many = Array.from({ length: 20 }, (_, i) => `📋 กลุ่ม ${i}\n${'x'.repeat(400)}`);
+  const text = digestText(many, 'https://x.test/dashboard');
+  assert.ok(text.length <= 5000, `ยาวเกินที่ LINE รับได้: ${text.length}`);
+  assert.match(text, /อีก \d+ กลุ่ม อ่านบนกระดาน/, 'ตัดแล้วต้องบอก ไม่ใช่หายเงียบ');
+  assert.ok(text.includes('https://x.test/dashboard'), 'ต้องแปะลิงก์กระดานไว้ท้าย');
+
+  const one = digestText(['📋 กลุ่มเดียว\nสรุปสั้น ๆ'], '');
+  assert.ok(one.includes('สรุปสั้น ๆ') && !one.includes('อีก'), 'กลุ่มเดียวต้องไม่มีคำว่าตัด');
+  assert.ok(!one.includes('undefined'), 'ไม่มีลิงก์ก็ต้องไม่โผล่ undefined');
 }
 
 console.log('✅ ผ่านหมด');

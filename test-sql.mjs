@@ -12,9 +12,9 @@ await db.exec(SCHEMA);
 const { rows: [t] } = await q(
   `select count(*)::int as n from information_schema.tables
     where table_schema='public'
-      and table_name in ('messages','state','watched','reports','expenses','orders','alerts')`
+      and table_name in ('messages','state','watched','reports','expenses','orders','alerts','people')`
 );
-assert.equal(t.n, 7, 'ต้องได้ครบ 7 ตาราง');
+assert.equal(t.n, 8, 'ต้องได้ครบ 8 ตาราง');
 
 // รันซ้ำต้องไม่พัง (ผู้ใช้กด setup สองรอบได้)
 await db.exec(SCHEMA);
@@ -155,4 +155,44 @@ const { rows: [health] } = await q(
 );
 assert.equal(Number(health.groups), 1);
 
-console.log('✅ SQL ผ่านหมด 12 หมวด (รันกับ Postgres จริง)');
+// ── 13. people — ถามชื่อจาก LINE ครั้งเดียวแล้วจำ (ได้ null ก็ต้องนับว่าถามแล้ว)
+const remember = (id, name) =>
+  q(
+    `insert into people (user_id, name) values ($1,$2)
+     on conflict (user_id) do update set name = coalesce(excluded.name, people.name), updated_at = now()`,
+    [id, name]
+  );
+await remember('Uuser1', 'คุณเอ');
+await remember('Uleft', null); // คนที่ออกจากกลุ่มไปแล้ว — ไม่ได้ชื่อ
+const { rows: people } = await q('select user_id, name from people where user_id = any($1)', [['Uuser1', 'Uleft', 'Unew']]);
+assert.equal(people.length, 2, 'คนที่ถามแล้วต้องอยู่ในตาราง ถึงจะไม่ได้ชื่อก็ตาม');
+await remember('Uuser1', null);
+assert.equal((await q(`select name from people where user_id='Uuser1'`)).rows[0].name, 'คุณเอ', 'ชื่อที่เคยได้ต้องไม่ถูกล้างทิ้ง');
+
+// ── 14. เตือนสุขภาพระบบ — เรื่องเดิมวันเดียวกันต้องเตือนครั้งเดียว
+const sick = (ref, detail) =>
+  q(
+    `insert into alerts (source_id, kind, ref, detail) values ('system','health',$1,$2)
+     on conflict do nothing returning id`,
+    [ref, detail]
+  );
+assert.equal((await sick('2026-08-26:token', 'token เหลือ 3 วัน')).rows.length, 1);
+assert.equal((await sick('2026-08-26:token', 'token เหลือ 3 วัน')).rows.length, 0, 'เรื่องเดิมวันเดิมต้องไม่เตือนซ้ำ');
+assert.equal((await sick('2026-08-27:token', 'token เหลือ 2 วัน')).rows.length, 1, 'วันใหม่ต้องเตือนได้อีก');
+
+// ── 15. คิวรีหางานถึงกำหนด (checkDue)
+await save('Uuser2', { chat: [], notes: [], todos: [{ id: 1, text: 'ส่งงาน', due: '2026-08-01 10:00', done: false }] });
+const { rows: withTodos } = await q(`select source_id, data from state where jsonb_array_length(data->'todos') > 0`);
+assert.equal(withTodos.length, 1, 'ต้องเจอเฉพาะคนที่มีงานค้าง');
+assert.equal(withTodos[0].data.todos[0].text, 'ส่งงาน');
+
+// ── 16. คิวรีการเตือนบนกระดาน — ต้องอ่าน detail ของการเตือนที่ไม่มีข้อความ LINE ต้นทางได้
+const { rows: shown } = await q(
+  `select a.kind, a.source_id, w.title, m.text, a.detail
+     from alerts a left join watched w using (source_id)
+     left join messages m on m.line_message_id = a.ref
+    order by a.created_at desc limit 20`
+);
+assert.ok(shown.some((a) => a.kind === 'health' && a.detail && !a.text), 'การเตือนระบบต้องมี detail ให้แสดง');
+
+console.log('✅ SQL ผ่านหมด 16 หมวด (รันกับ Postgres จริง)');

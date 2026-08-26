@@ -69,6 +69,7 @@ const KEYS = [
   'DASHBOARD_PUBLIC',
   'CRON_FREQUENT',
   'REPLY_TO_ALL',
+  'DASHBOARD_URL',
 ];
 
 const env = {};

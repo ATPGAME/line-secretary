@@ -52,7 +52,7 @@ export default async function Dashboard({ searchParams }) {
          from expenses where paid_at > date_trunc('month', now()) group by 1 order by 1`),
     q(`select o.*, to_char(o.ordered_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at
          from orders o order by o.ordered_at desc limit 20`),
-    q(`select a.kind, a.source_id, w.title, m.text,
+    q(`select a.kind, a.source_id, w.title, m.text, a.detail,
               to_char(a.created_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at,
               a.created_at > now() - interval '24 hours' as fresh
          from alerts a
@@ -113,11 +113,14 @@ export default async function Dashboard({ searchParams }) {
       <Section title="ที่ต้องรู้ทันที" icon="🚨" count={alerts.length} empty={!alerts.length} emptyText="เงียบดี ไม่มีเรื่องด่วน">
         <div className="list">
           {alerts.map((a, i) => (
-            <div key={i} className={`alert ${a.kind === 'sla' ? 'sla' : 'kw'} ${a.fresh ? 'fresh' : ''}`}>
+            <div key={i} className={`alert ${ALERT[a.kind]?.cls || 'kw'} ${a.fresh ? 'fresh' : ''}`}>
               <div className="alert-head">
-                <b>{a.kind === 'sla' ? '⏰ ถามค้าง ยังไม่มีใครตอบ' : '⚠️ คำต้องห้าม'}</b>
-                <span className="dim">{a.at} น. · {a.title || a.source_id.slice(0, 12) + '…'}</span>
+                <b>{ALERT[a.kind]?.label || '⚠️ คำต้องห้าม'}</b>
+                <span className="dim">
+                  {a.at} น. · {a.kind === 'health' ? 'ระบบ' : a.title || a.source_id.slice(0, 12) + '…'}
+                </span>
               </div>
+              {a.detail && <p className="quote">{a.detail}</p>}
               {a.text && <p className="quote">“{a.text.slice(0, 220)}”</p>}
             </div>
           ))}
@@ -326,6 +329,7 @@ p{margin:0}
 /* alerts */
 .alert{border-left:3px solid var(--warn);background:#FFFBF3;border-radius:0 12px 12px 0;padding:10px 14px}
 .alert.kw{border-color:var(--hot);background:#FFF5F7}
+.alert.sys{border-color:var(--p500);background:var(--p50)}
 .alert.fresh{box-shadow:0 0 0 3px rgba(225,29,72,.07)}
 .alert-head{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
 .alert-head b{font-size:14px}
@@ -402,6 +406,12 @@ code{background:var(--p100);color:var(--p700);padding:1px 6px;border-radius:6px;
 `;
 
 // ข้อมูลสมมุติสำหรับดูหน้าตา — เปิดด้วย &demo=1 (ไม่แตะฐานข้อมูลจริง)
+const ALERT = {
+  sla: { cls: 'sla', label: '⏰ ถามค้าง ยังไม่มีใครตอบ' },
+  keyword: { cls: 'kw', label: '⚠️ คำต้องห้าม' },
+  health: { cls: 'sys', label: '🩺 ระบบมีปัญหา' },
+};
+
 const DEMO = {
   states: [
     { source_id: 'Udemo', updated_at: new Date(), data: {
