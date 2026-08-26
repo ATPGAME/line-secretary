@@ -14,7 +14,7 @@ export default async function Dashboard({ searchParams }) {
       <main className="gate">
         <style>{CSS}</style>
         <div className="gate-card">
-          <div className="gate-logo">•</div>
+          <img className="gate-logo" src="/avatar.png" alt="" width="56" height="56" />
           <h1>ต้องมีกุญแจก่อนครับ</h1>
           <p>เติม <code>?key=...</code> ท้าย URL ให้ตรงกับ <code>DASHBOARD_KEY</code></p>
         </div>
@@ -90,7 +90,7 @@ export default async function Dashboard({ searchParams }) {
       <header className="hero">
         <div className="hero-glow" />
         <div className="hero-row">
-          <div className="avatar">{(process.env.BOT_NAME || 'เลขา').slice(0, 4)}</div>
+          <img className="avatar" src="/avatar.png" alt="" width="52" height="52" />
           <div>
             <h1>{process.env.BOT_NAME || 'เลขาส่วนตัว'}</h1>
             <p className="hero-sub">สรุปงานประจำวัน · อัปเดต {now} น.</p>
@@ -286,13 +286,16 @@ p{margin:0}
 .hero{position:relative;overflow:hidden;border-radius:24px;padding:26px 24px;
   background:linear-gradient(135deg,var(--p700) 0%,var(--p500) 55%,#9F67F0 100%);
   color:#fff;box-shadow:0 18px 40px -18px rgba(91,33,182,.55)}
+.hero::before{content:'';position:absolute;inset:0;background:url('/hero.jpg') center/cover no-repeat;
+  opacity:.85;mix-blend-mode:screen;pointer-events:none}
 .hero-glow{position:absolute;inset:auto -60px -120px auto;width:280px;height:280px;border-radius:50%;
   background:rgba(255,255,255,.16);filter:blur(10px)}
 .hero-row{display:flex;align-items:center;gap:14px;position:relative}
 .hero h1{font-size:26px;letter-spacing:-.02em}
 .hero-sub{color:rgba(255,255,255,.82);font-size:14px}
-.avatar{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;
-  background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);font-weight:700;font-size:18px}
+.avatar{width:52px;height:52px;border-radius:16px;object-fit:cover;flex:none;
+  background:rgba(255,255,255,.9);border:1px solid rgba(255,255,255,.5);
+  box-shadow:0 6px 16px -8px rgba(0,0,0,.5)}
 .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;position:relative}
 .chip{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);
   padding:5px 12px;border-radius:999px;font-size:13px}
@@ -384,8 +387,8 @@ p{margin:0}
   background:linear-gradient(135deg,var(--p700),var(--p500))}
 .gate-card{background:#fff;border-radius:22px;padding:32px;text-align:center;max-width:380px;
   box-shadow:0 24px 60px -30px rgba(0,0,0,.5)}
-.gate-logo{width:56px;height:56px;border-radius:18px;margin:0 auto 14px;display:grid;place-items:center;
-  background:var(--p100);color:var(--p700);font-weight:800;font-size:20px}
+.gate-logo{width:56px;height:56px;border-radius:18px;margin:0 auto 14px;object-fit:cover;
+  background:var(--p100);display:block}
 .gate-card h1{font-size:19px;margin-bottom:6px}
 .gate-card p{font-size:14px;color:var(--muted)}
 code{background:var(--p100);color:var(--p700);padding:1px 6px;border-radius:6px;font-size:13px}
