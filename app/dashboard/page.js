@@ -148,7 +148,10 @@ export default async function Dashboard({ searchParams }) {
             {notes.map((n, i) => (
               <div key={i} className="note">
                 <p>{n.text}</p>
-                {n.at && <span className="dim">{new Date(n.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>}
+                <span className="dim">
+                  {n.id ? `#${n.id}` : ''}
+                  {n.at && ` · ${new Date(n.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}`}
+                </span>
               </div>
             ))}
           </div>
@@ -421,8 +424,8 @@ const DEMO = {
         { id: 3, text: 'โทรหาช่างเรื่องคิวติดตั้งหลังคาโกดัง', due: 'ศุกร์นี้' },
       ],
       notes: [
-        { at: new Date().toISOString(), text: 'รหัส wifi ออฟฟิศ: bizdrive2569' },
-        { at: new Date().toISOString(), text: 'ค่าแผงโซลาร์ล็อตใหม่ 4,150 บาท/แผง ส่งฟรีเกิน 20 แผง' },
+        { id: 1, at: new Date().toISOString(), text: 'รหัส wifi ออฟฟิศ: bizdrive2569' },
+        { id: 2, at: new Date().toISOString(), text: 'ค่าแผงโซลาร์ล็อตใหม่ 4,150 บาท/แผง ส่งฟรีเกิน 20 แผง' },
       ] } },
   ],
   groups: [

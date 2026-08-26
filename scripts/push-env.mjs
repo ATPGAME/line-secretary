@@ -70,6 +70,7 @@ const KEYS = [
   'CRON_FREQUENT',
   'REPLY_TO_ALL',
   'DASHBOARD_URL',
+  'CHAT_MEMORY',
 ];
 
 const env = {};

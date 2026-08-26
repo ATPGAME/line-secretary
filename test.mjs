@@ -19,6 +19,30 @@ assert.equal(verifySignature(body, 'sn', secret), false, 'ลายเซ็น�
 const s = { chat: [], notes: [], todos: [] };
 await applyTool(s, 'save_note', { text: 'wifi 12345678' });
 assert.equal(s.notes[0].text, 'wifi 12345678');
+assert.equal(s.notes[0].id, 1, 'โน้ตต้องมีเลขให้อ้างตอนสั่งลบ');
+
+// ── ลืมโน้ต: ลบผิดอันแล้วกู้ไม่ได้ ตรรกะตรงนี้เลยต้องแน่น
+{
+  const n = { chat: [], notes: [], todos: [] };
+  await applyTool(n, 'save_note', { text: 'รหัส wifi บ้าน 1111' });
+  await applyTool(n, 'save_note', { text: 'รหัส wifi ออฟฟิศ 2222' });
+  await applyTool(n, 'save_note', { text: 'เลขบัญชี 3333' });
+
+  assert.match(await applyTool(n, 'forget_note', { q: 'wifi' }), /ระบุให้ชัด/, 'ตรงหลายอันต้องถามกลับ ไม่ใช่เดาลบ');
+  assert.equal(n.notes.length, 3, 'ถามกลับแล้วต้องยังไม่ลบอะไร');
+
+  assert.match(await applyTool(n, 'forget_note', { q: 'บัญชี' }), /ลืม/);
+  assert.equal(n.notes.length, 2);
+
+  assert.match(await applyTool(n, 'forget_note', { id: 1 }), /บ้าน 1111/, 'ลบด้วยเลขต้องได้อันที่ถูก');
+  assert.deepEqual(n.notes.map((x) => x.id), [2]);
+
+  assert.match(await applyTool(n, 'forget_note', { id: 1 }), /ไม่เจอ/, 'ลบซ้ำต้องบอกว่าไม่เจอ');
+  assert.match(await applyTool(n, 'forget_note', {}), /อันไหน/, 'ไม่บอกว่าจะลบอะไรต้องถามกลับ');
+
+  await applyTool(n, 'save_note', { text: 'ของใหม่' });
+  assert.equal(n.notes.at(-1).id, 3, 'เลขต้องไม่วนกลับไปชนของที่ลบไปแล้ว');
+}
 
 await applyTool(s, 'add_todo', { text: 'ส่งงานลูกค้า', due: '2026-08-01 10:00' });
 await applyTool(s, 'add_todo', { text: 'จ่ายบิล' });

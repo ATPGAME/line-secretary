@@ -195,4 +195,30 @@ const { rows: shown } = await q(
 );
 assert.ok(shown.some((a) => a.kind === 'health' && a.detail && !a.text), 'การเตือนระบบต้องมี detail ให้แสดง');
 
-console.log('✅ SQL ผ่านหมด 16 หมวด (รันกับ Postgres จริง)');
+// ── 17. ค้นข้อความย้อนหลัง (search_history) — คิวรีเดียวรับได้ทั้งมีคำค้น/ไม่มี/จำกัดกลุ่ม
+await q(`update watched set title = 'ทีมขาย' where source_id = 'Cgroup1'`);
+const search = (days, keyword, scope, group) =>
+  q(
+    `select m.text, m.ts, w.title, p.name as who
+       from messages m
+       left join watched w on w.source_id = m.source_id
+       left join people p on p.user_id = m.user_id
+      where m.text is not null
+        and m.ts > now() - ($1 || ' days')::interval
+        and ($2 = '' or m.text ilike '%' || $2 || '%')
+        and ($3::text is null or m.source_id = $3)
+        and ($4 = '' or coalesce(w.title, '') ilike '%' || $4 || '%')
+      order by m.ts desc limit 60`,
+    [days, keyword, scope, group]
+  );
+const all = await search(30, '', null, '');
+assert.equal(all.rows.length, 1, 'ไม่ใส่เงื่อนไข = เจอทุกข้อความ');
+assert.equal(all.rows[0].who, 'คุณเอ', 'ต้องบอกได้ว่าใครพูด');
+assert.equal(all.rows[0].title, 'ทีมขาย');
+assert.equal((await search(30, 'สวัสดี', null, '')).rows.length, 1, 'ค้นด้วยคำไทยต้องเจอ');
+assert.equal((await search(30, 'ไม่มีคำนี้', null, '')).rows.length, 0);
+assert.equal((await search(30, '', 'Cother', '')).rows.length, 0, 'สั่งในกลุ่ม = ต้องไม่เห็นข้อความของกลุ่มอื่น');
+assert.equal((await search(30, '', null, 'ทีมขาย')).rows.length, 1, 'ค้นด้วยชื่อกลุ่มต้องเจอ');
+assert.equal((await search(0, '', null, '')).rows.length, 0, 'ย้อนหลัง 0 วัน = ไม่เห็นอะไร');
+
+console.log('✅ SQL ผ่านหมด 17 หมวด (รันกับ Postgres จริง)');
