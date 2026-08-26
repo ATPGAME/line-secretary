@@ -68,6 +68,7 @@ const KEYS = [
   'PERSONA',
   'DASHBOARD_PUBLIC',
   'CRON_FREQUENT',
+  'REPLY_TO_ALL',
 ];
 
 const env = {};

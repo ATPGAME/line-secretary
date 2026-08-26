@@ -51,4 +51,14 @@ assert.equal(toCE('2027-01-01'), '2027-01-01', 'ปีหน้าต้อง�
 assert.equal(toCE(null), null);
 assert.equal(toCE('เมื่อวาน'), 'เมื่อวาน', 'อ่านไม่ออกก็ปล่อยผ่าน ไม่พัง');
 
+// ── กฎ: ตอบเฉพาะเจ้าของ
+{
+  const { mayReply } = await import('./lib/line.js');
+  const OWNER = 'Uowner';
+  assert(mayReply(OWNER, { OWNER_USER_ID: OWNER }), 'เจ้าของต้องได้คำตอบ');
+  assert(!mayReply('Ustranger', { OWNER_USER_ID: OWNER }), 'คนอื่นต้องไม่ได้คำตอบ');
+  assert(mayReply('Ustranger', {}), 'ยังไม่ตั้ง OWNER_USER_ID (ตอนติดตั้ง) = ตอบได้');
+  assert(mayReply('Ustranger', { OWNER_USER_ID: OWNER, REPLY_TO_ALL: '1' }), 'REPLY_TO_ALL=1 = ตอบทุกคน');
+}
+
 console.log('✅ ผ่านหมด');

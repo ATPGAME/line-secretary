@@ -1,4 +1,4 @@
-import { verifySignature, reply, push, getContent, groupTitle } from '@/lib/line';
+import { verifySignature, reply, push, getContent, groupTitle, mayReply } from '@/lib/line';
 import { load, save, ingest, q } from '@/lib/db';
 import { think, readSlip, transcribe } from '@/lib/brain';
 
@@ -30,6 +30,10 @@ async function handle(ev) {
   const sourceId = src.groupId || src.roomId || src.userId;
   const ctx = { sourceId, userId: src.userId, sourceType: src.type };
 
+  // กฎ: ตอบเฉพาะเจ้าของ — คนอื่นที่แอด OA มาจะไม่ได้คำตอบ (และไม่เผาเครดิต AI)
+  // ยังไม่ตั้ง OWNER_USER_ID (ตอนติดตั้ง) หรือ REPLY_TO_ALL=1 = เปิดให้ทุกคนเหมือนเดิม
+  const isOwner = mayReply(src.userId);
+
   if (ev.type === 'join') {
     const title = await groupTitle(src.type, sourceId);
     await q(
@@ -45,11 +49,13 @@ async function handle(ev) {
   }
 
   if (ev.type === 'follow') {
+    if (!isOwner) return; // คนแปลกหน้าแอดมา — เงียบไว้
     return reply(ev.replyToken, 'สวัสดีครับ ผมเป็นเลขาส่วนตัว สั่งได้เลย เช่น "จดไว้ รหัส wifi 12345678", "เตือนส่งงานพรุ่งนี้ 10 โมง" หรือส่งสลิปมาให้บันทึกรายจ่ายก็ได้');
   }
 
   if (ev.type !== 'message') return;
   const isDirect = src.type === 'user';
+  if (isDirect && !isOwner) return; // แชท 1:1 กับคนอื่น — ไม่ตอบ ไม่บันทึก
 
   // กลุ่มที่ยังไม่มีในทะเบียน (เชิญบอทเข้ามาก่อนจะ deploy เสร็จ ก็เลยไม่ได้ event join) → ลงทะเบียนให้เอง
   if (!isDirect) {
@@ -104,7 +110,7 @@ async function handle(ev) {
   if (!isDirect) await checkAlertWords(sourceId, ev.message.id, text);
 
   const calledMe = ev.message.mention?.mentionees?.some((m) => m.isSelf) || /^\s*เลขา/.test(text);
-  if (!isDirect && !calledMe) return; // ในกลุ่ม ไม่เรียกก็ไม่ตอบ (และไม่เผาเครดิต)
+  if (!isDirect && (!calledMe || !isOwner)) return; // ในกลุ่ม ตอบเฉพาะตอนเจ้าของเรียก (ข้อความคนอื่นเก็บไว้สรุปตามปกติ)
 
   const state = await load(sourceId);
   const answer = await think(state, text, ctx);
