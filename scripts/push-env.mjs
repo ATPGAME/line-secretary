@@ -64,6 +64,10 @@ const KEYS = [
   'CRON_SECRET',
   'OWNER_USER_ID',
   'ELEVENLABS_API_KEY',
+  'BOT_NAME',
+  'PERSONA',
+  'DASHBOARD_PUBLIC',
+  'CRON_FREQUENT',
 ];
 
 const env = {};

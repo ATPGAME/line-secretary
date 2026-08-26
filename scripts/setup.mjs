@@ -2,7 +2,6 @@
 //   node scripts/setup.mjs                        → ตรวจค่า + สร้างตาราง
 //   node scripts/setup.mjs https://xxx.vercel.app → ตรวจค่า + สร้างตาราง + ตั้ง webhook ให้ LINE เลย
 import fs from 'node:fs';
-import { q } from '../lib/db.js';
 import { SCHEMA } from '../lib/schema.js';
 
 // อ่าน .env.local เองเพื่อไม่ต้องพึ่ง dotenv
@@ -12,6 +11,9 @@ if (fs.existsSync('.env.local')) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
   }
 }
+
+// db.js สร้าง pool ตอน import — ต้อง import หลังโหลด .env.local ไม่งั้นได้ localhost
+const { q } = await import('../lib/db.js');
 
 const REQUIRED = ['LINE_CHANNEL_ACCESS_TOKEN', 'LINE_CHANNEL_SECRET', 'OPENROUTER_API_KEY', 'DATABASE_URL', 'DASHBOARD_KEY'];
 const missing = REQUIRED.filter((k) => !process.env[k]);
