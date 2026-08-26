@@ -22,50 +22,13 @@ export default async function Dashboard({ searchParams }) {
     );
   }
 
-  let [
-    { rows: states },
-    { rows: groups },
-    { rows: reports },
-    { rows: expenses },
-    { rows: expDays },
-    { rows: orders },
-    { rows: alerts },
-    { rows: pulse },
-  ] = await Promise.all([
-    q('select source_id, data, updated_at from state order by updated_at desc'),
-    q(`select w.*,
-              (select count(*) from messages m where m.source_id = w.source_id) as msgs,
-              (select count(*) from messages m where m.source_id = w.source_id
-                 and m.ts > now() - interval '24 hours') as msgs_today,
-              to_char(w.last_report_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as last_report
-         from watched w order by w.active desc, msgs desc`),
-    q(`select r.*, w.title,
-              to_char(r.created_at at time zone 'Asia/Bangkok', 'YYYY-MM-DD') as day,
-              to_char(r.created_at at time zone 'Asia/Bangkok', 'HH24:MI') as at,
-              (select count(*) from messages m
-                where m.source_id = r.source_id and m.ts between r.period_start and r.period_end) as msgs
-         from reports r left join watched w using (source_id)
-        order by r.created_at desc limit 60`),
-    q(`select coalesce(category,'อื่น ๆ') as category, sum(amount) as total, count(*) as n
-         from expenses where paid_at > date_trunc('month', now()) group by 1 order by total desc`),
-    q(`select to_char(paid_at at time zone 'Asia/Bangkok', 'DD') as d, sum(amount) as total
-         from expenses where paid_at > date_trunc('month', now()) group by 1 order by 1`),
-    q(`select o.*, to_char(o.ordered_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at
-         from orders o order by o.ordered_at desc limit 20`),
-    q(`select a.kind, a.source_id, w.title, m.text, a.detail,
-              to_char(a.created_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at,
-              a.created_at > now() - interval '24 hours' as fresh
-         from alerts a
-         left join watched w using (source_id)
-         left join messages m on m.line_message_id = a.ref
-        order by a.created_at desc limit 20`),
-    q(`select (select count(*) from messages where ts > now() - interval '24 hours') as msgs_today,
-              (select count(*) from alerts   where created_at > now() - interval '24 hours') as alerts_today,
-              (select count(*) from reports  where created_at > now() - interval '24 hours') as reports_today`),
-  ]);
+  // ชื่อ → คิวรี · เลี่ยงการรับผลลัพธ์เป็นลำดับ (สลับตำแหน่งทีเดียวหน้าพังทั้งหน้า โดยไม่มีอะไรเตือน)
+  const data = Object.fromEntries(
+    await Promise.all(Object.entries(QUERIES).map(async ([key, sql]) => [key, (await q(sql)).rows]))
+  );
 
   // &demo=1 = ดูหน้าตาเต็ม ๆ ด้วยข้อมูลสมมุติ (ไม่แตะฐานข้อมูลจริง)
-  if (demo) ({ states, groups, reports, expenses, expDays, orders, alerts, pulse } = DEMO);
+  const { states, groups, reports, expenses, expDays, orders, paid, alerts, pulse } = demo ? DEMO : data;
 
   const spent = expenses.reduce((s, e) => s + Number(e.total), 0);
   const maxCat = Math.max(1, ...expenses.map((e) => Number(e.total)));
@@ -207,6 +170,11 @@ export default async function Dashboard({ searchParams }) {
         </Section>
 
         <Section title="ออเดอร์ล่าสุด" icon="📦" count={orders.length} empty={!orders.length} emptyText="เปิด track_orders ในกลุ่มที่รับออเดอร์">
+          {Number(paid[0]?.n) > 0 && (
+            <p className="dim" style={{ marginBottom: 10 }}>
+              💰 เงินเข้าเดือนนี้ {paid[0].n} ใบ · รวม {baht(paid[0].total)} บาท
+            </p>
+          )}
           <div className="list">
             {orders.map((o) => (
               <div key={o.id} className="order">
@@ -216,7 +184,7 @@ export default async function Dashboard({ searchParams }) {
                 </div>
                 <div className="order-right">
                   {o.amount && <b className="amount">{baht(o.amount)} ฿</b>}
-                  <span className="dim">{o.at}</span>
+                  <span className="dim">{o.paid ? '✅ จ่ายแล้ว · ' : ''}{o.at}</span>
                 </div>
               </div>
             ))}
@@ -409,6 +377,50 @@ code{background:var(--p100);color:var(--p700);padding:1px 6px;border-radius:6px;
 `;
 
 // ข้อมูลสมมุติสำหรับดูหน้าตา — เปิดด้วย &demo=1 (ไม่แตะฐานข้อมูลจริง)
+const QUERIES = {
+  states: 'select source_id, data, updated_at from state order by updated_at desc',
+
+  groups: `select w.*,
+             (select count(*) from messages m where m.source_id = w.source_id) as msgs,
+             (select count(*) from messages m where m.source_id = w.source_id
+                and m.ts > now() - interval '24 hours') as msgs_today,
+             to_char(w.last_report_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as last_report
+        from watched w order by w.active desc, msgs desc`,
+
+  reports: `select r.*, w.title,
+              to_char(r.created_at at time zone 'Asia/Bangkok', 'YYYY-MM-DD') as day,
+              to_char(r.created_at at time zone 'Asia/Bangkok', 'HH24:MI') as at,
+              (select count(*) from messages m
+                where m.source_id = r.source_id and m.ts between r.period_start and r.period_end) as msgs
+         from reports r left join watched w using (source_id)
+        order by r.created_at desc limit 60`,
+
+  expenses: `select coalesce(category,'อื่น ๆ') as category, sum(amount) as total, count(*) as n
+               from expenses where paid_at > date_trunc('month', now()) group by 1 order by total desc`,
+
+  expDays: `select to_char(paid_at at time zone 'Asia/Bangkok', 'DD') as d, sum(amount) as total
+              from expenses where paid_at > date_trunc('month', now()) group by 1 order by 1`,
+
+  orders: `select o.*, o.paid_at is not null as paid,
+             to_char(o.ordered_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at
+        from orders o order by o.ordered_at desc limit 20`,
+
+  paid: `select coalesce(sum(amount),0) as total, count(*)::int as n
+           from payments where created_at > date_trunc('month', now())`,
+
+  alerts: `select a.kind, a.source_id, w.title, m.text, a.detail,
+             to_char(a.created_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at,
+             a.created_at > now() - interval '24 hours' as fresh
+        from alerts a
+        left join watched w using (source_id)
+        left join messages m on m.line_message_id = a.ref
+       order by a.created_at desc limit 20`,
+
+  pulse: `select (select count(*) from messages where ts > now() - interval '24 hours') as msgs_today,
+                 (select count(*) from alerts   where created_at > now() - interval '24 hours') as alerts_today,
+                 (select count(*) from reports  where created_at > now() - interval '24 hours') as reports_today`,
+};
+
 const ALERT = {
   sla: { cls: 'sla', label: '⏰ ถามค้าง ยังไม่มีใครตอบ' },
   keyword: { cls: 'kw', label: '⚠️ คำต้องห้าม' },
@@ -459,6 +471,7 @@ const DEMO = {
     { id: 2, customer: 'คุณเอ๋ ปทุมธานี', items: ['ชุดออนกริด 3kW'], amount: 89000, at: '25/08 16:40' },
     { id: 3, customer: 'โกดังบางนา (งวด 2)', items: ['ติดตั้ง 20kW'], amount: 150000, at: '24/08 11:02' },
   ],
+  paid: [{ n: 3, total: 12800 }],
   alerts: [
     { kind: 'keyword', source_id: 'C2', title: 'ลูกค้า — โกดังบางนา', at: '26/08 13:41', fresh: true,
       text: 'ถ้าเลื่อนอีกรอบผมขอยกเลิกสัญญาแล้วนะครับ รอมาสองอาทิตย์แล้ว' },

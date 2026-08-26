@@ -70,9 +70,20 @@ async function handle(ev) {
       ]);
   }
 
-  // ── รูป: อ่านสลิปให้ (เฉพาะแชทส่วนตัว — ในกลุ่มรูปเยอะเกินกว่าจะอ่านทุกใบ)
+  // ── รูป: อ่านสลิปให้
   if (ev.message.type === 'image') {
-    if (!isDirect) return;
+    // ในกลุ่มอ่านเฉพาะกลุ่มที่เปิด track_orders ไว้ (กลุ่มทั่วไปรูปเยอะ อ่านทุกใบ = เผาเครดิตทิ้ง)
+    if (!isDirect) {
+      const { rows: [g] } = await q('select track_orders from watched where source_id = $1 and active', [sourceId]);
+      if (!g?.track_orders) return;
+      const imgId = await ingest({ ...base(ev, src, sourceId), kind: 'image', text: null });
+      if (!imgId) return;
+      try {
+        return await handleGroupSlip(sourceId, ev, imgId);
+      } catch (err) {
+        return console.error('group slip failed:', err.message);
+      }
+    }
     const msgId = await ingest({ ...base(ev, src, sourceId), kind: 'image', text: null });
     if (!msgId) return;
     try {
@@ -153,6 +164,28 @@ async function handleSlip(ev, ctx, msgId) {
     `บันทึกแล้ว ${Number(slip.amount).toLocaleString('th-TH')} บาท${slip.bank ? ` · ${slip.bank}` : ''}${slip.category ? ` · ${slip.category}` : ''}\n` +
       `เดือนนี้ใช้ไป ${Number(sum.total).toLocaleString('th-TH')} บาท${warn}`
   );
+}
+
+// สลิปในกลุ่มรับออเดอร์ = ลูกค้าโอนเงินมา ไม่ใช่รายจ่ายของเรา — เก็บแยก แล้วจับคู่กับออเดอร์ยอดเท่ากัน
+// ไม่ตอบอะไรในกลุ่ม (กฎ: บอทพูดเฉพาะตอนเจ้าของเรียก) ขึ้นให้ดูบนกระดานกับในรายงานสรุปแทน
+async function handleGroupSlip(sourceId, ev, msgId) {
+  const slip = await readSlip(await getContent(ev.message.id));
+  if (!slip.is_slip || !slip.amount) return;
+
+  const { rows: [order] } = await q(
+    `select id from orders where source_id = $1 and paid_at is null and amount = $2
+      order by ordered_at desc limit 1`,
+    [sourceId, slip.amount]
+  );
+
+  const { rows } = await q(
+    `insert into payments (source_id, amount, bank, ref, paid_at, matched_order_id, source_message_id)
+     values ($1,$2,$3,$4,coalesce($5::timestamptz, now()),$6,$7)
+     on conflict do nothing returning id`,
+    [sourceId, slip.amount, slip.bank, slip.ref, slip.paid_at, order?.id ?? null, msgId]
+  );
+  if (rows.length && order)
+    await q('update orders set paid_at = now(), paid_ref = $2 where id = $1', [order.id, slip.ref]);
 }
 
 async function checkAlertWords(sourceId, lineMessageId, text) {

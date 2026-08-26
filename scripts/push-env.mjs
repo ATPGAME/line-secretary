@@ -71,6 +71,7 @@ const KEYS = [
   'REPLY_TO_ALL',
   'DASHBOARD_URL',
   'CHAT_MEMORY',
+  'CALENDAR_ICS_URL',
 ];
 
 const env = {};

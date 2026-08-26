@@ -107,4 +107,53 @@ assert.equal(dueTime(''), null);
   assert.ok(!one.includes('undefined'), 'ไม่มีลิงก์ก็ต้องไม่โผล่ undefined');
 }
 
+// ── ปฏิทิน: เวลาไทย/ทั้งวัน/นัดซ้ำ — พลาดเรื่องเขตเวลาแล้วนัดจะเลื่อนไป 7 ชั่วโมง
+{
+  const { parseIcs, agendaText } = await import('./lib/calendar.js');
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'BEGIN:VEVENT',
+    'DTSTART;TZID=Asia/Bangkok:20260827T100000',
+    'DTEND;TZID=Asia/Bangkok:20260827T113000',
+    'SUMMARY:ประชุมทีม',
+    'LOCATION:ออฟฟิศ',
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'DTSTART;VALUE=DATE:20260828',
+    'DTEND;VALUE=DATE:20260829',
+    'SUMMARY:หยุด\\, ยาว',
+    'END:VEVENT',
+    'BEGIN:VEVENT',
+    'DTSTART;TZID=Asia/Bangkok:20260803T090000',
+    'RRULE:FREQ=WEEKLY;BYDAY=MO',
+    'SUMMARY:สรุปยอดรายสัปดาห์',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\r\n');
+
+  const week = parseIcs(ics, new Date('2026-08-26T00:00:00+07:00'), new Date('2026-09-02T00:00:00+07:00'));
+  assert.equal(week.length, 3, 'ต้องได้ 3 นัดในสัปดาห์นั้น');
+  assert.equal(week[0].at.toISOString(), '2026-08-27T03:00:00.000Z', '10 โมงไทย = 03:00 UTC');
+  assert.equal(week[0].where, 'ออฟฟิศ');
+  assert.equal(week[1].allDay, true, 'VALUE=DATE ต้องเป็นนัดทั้งวัน');
+  assert.equal(week[1].title, 'หยุด, ยาว', 'ต้องถอด \\, ให้เป็นจุลภาค');
+  assert.equal(
+    week[2].at.toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }), '2026-08-31',
+    'นัดทุกวันจันทร์ต้องคลี่มาโผล่วันจันทร์ถัดไป'
+  );
+
+  // นอกช่วงที่ถามต้องไม่โผล่
+  assert.equal(parseIcs(ics, new Date('2026-09-05T00:00:00+07:00'), new Date('2026-09-06T00:00:00+07:00')).length, 0);
+  assert.match(agendaText([], 'วันนี้'), /ไม่มีนัด/);
+  assert.match(agendaText(null), /ยังไม่ได้ต่อปฏิทิน/);
+  assert.match(agendaText(week, 'อาทิตย์นี้'), /ประชุมทีม @ ออฟฟิศ/);
+}
+
+// ── รายงานเช้าแปะตารางนัดไว้หัวได้
+{
+  const one = digestText(['📋 กลุ่มเดียว\nสรุป'], '', '\n\n📅 วันนี้ 1 นัด\n• 27 ส.ค. 10:00 ประชุมทีม');
+  assert.ok(one.includes('📅 วันนี้ 1 นัด'), 'ตารางนัดต้องอยู่ในรายงาน');
+  assert.ok(one.indexOf('📅') < one.indexOf('📋'), 'ตารางนัดต้องมาก่อนสรุปกลุ่ม');
+}
+
 console.log('✅ ผ่านหมด');

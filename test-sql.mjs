@@ -12,9 +12,9 @@ await db.exec(SCHEMA);
 const { rows: [t] } = await q(
   `select count(*)::int as n from information_schema.tables
     where table_schema='public'
-      and table_name in ('messages','state','watched','reports','expenses','orders','alerts','people')`
+      and table_name in ('messages','state','watched','reports','expenses','orders','alerts','people','payments')`
 );
-assert.equal(t.n, 8, 'ต้องได้ครบ 8 ตาราง');
+assert.equal(t.n, 9, 'ต้องได้ครบ 9 ตาราง');
 
 // รันซ้ำต้องไม่พัง (ผู้ใช้กด setup สองรอบได้)
 await db.exec(SCHEMA);
@@ -221,4 +221,34 @@ assert.equal((await search(30, '', 'Cother', '')).rows.length, 0, 'สั่ง�
 assert.equal((await search(30, '', null, 'ทีมขาย')).rows.length, 1, 'ค้นด้วยชื่อกลุ่มต้องเจอ');
 assert.equal((await search(0, '', null, '')).rows.length, 0, 'ย้อนหลัง 0 วัน = ไม่เห็นอะไร');
 
-console.log('✅ SQL ผ่านหมด 17 หมวด (รันกับ Postgres จริง)');
+// ── 18. เงินเข้าจากสลิปในกลุ่ม — จับคู่ออเดอร์ยอดเท่ากันที่ยังไม่จ่าย
+const { rows: [ord] } = await q(`select id, amount from orders where source_id = 'Cgroup1' limit 1`);
+const { rows: [match] } = await q(
+  `select id from orders where source_id = $1 and paid_at is null and amount = $2 order by ordered_at desc limit 1`,
+  ['Cgroup1', ord.amount]
+);
+assert.equal(match.id, ord.id, 'ต้องหาออเดอร์ยอดตรงกันที่ยังไม่จ่ายเจอ');
+
+const pay = (ref, amount, orderId, msgId) =>
+  q(
+    `insert into payments (source_id, amount, bank, ref, paid_at, matched_order_id, source_message_id)
+     values ('Cgroup1',$1,'SCB',$2, now(),$3,$4) on conflict do nothing returning id`,
+    [amount, ref, orderId, msgId]
+  );
+assert.equal((await pay('P001', 250, match.id, msg.id)).rows.length, 1);
+assert.equal((await pay('P001', 250, match.id, msg.id)).rows.length, 0, 'สลิปใบเดิม (ข้อความเดิม) ต้องไม่เข้าซ้ำ');
+await q('update orders set paid_at = now(), paid_ref = $2 where id = $1', [match.id, 'P001']);
+assert.equal(
+  (await q(`select count(*)::int as n from orders where source_id='Cgroup1' and paid_at is null`)).rows[0].n,
+  0,
+  'ออเดอร์ต้องถูกมาร์คว่าจ่ายแล้ว'
+);
+const { rows: [money] } = await q(
+  `select count(*)::int as n, coalesce(sum(amount),0) as total,
+          count(*) filter (where matched_order_id is not null)::int as matched
+     from payments where source_id = 'Cgroup1' and created_at > now() - interval '1 hour'`
+);
+assert.equal(money.n, 1);
+assert.equal(money.matched, 1, 'ต้องนับได้ว่าจับคู่ออเดอร์ได้กี่ใบ');
+
+console.log('✅ SQL ผ่านหมด 18 หมวด (รันกับ Postgres จริง)');
