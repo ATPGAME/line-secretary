@@ -1,4 +1,4 @@
-import { verifySignature, reply, push, getContent } from '@/lib/line';
+import { verifySignature, reply, push, getContent, groupTitle } from '@/lib/line';
 import { load, save, ingest, q } from '@/lib/db';
 import { think, readSlip, transcribe } from '@/lib/brain';
 
@@ -31,10 +31,11 @@ async function handle(ev) {
   const ctx = { sourceId, userId: src.userId, sourceType: src.type };
 
   if (ev.type === 'join') {
+    const title = await groupTitle(src.type, sourceId);
     await q(
-      `insert into watched (source_id, report_to) values ($1, $2)
-       on conflict (source_id) do update set active = true`,
-      [sourceId, process.env.OWNER_USER_ID]
+      `insert into watched (source_id, report_to, title) values ($1, $2, $3)
+       on conflict (source_id) do update set active = true, title = coalesce(excluded.title, watched.title)`,
+      [sourceId, process.env.OWNER_USER_ID, title]
     );
     return reply(ev.replyToken, 'สวัสดีครับ ผมเป็นเลขาอัตโนมัติ จะอ่านข้อความในกลุ่มเพื่อสรุปให้เจ้าของบัญชี พิมพ์ "เลขา" ตามด้วยคำถามได้เลยครับ');
   }
