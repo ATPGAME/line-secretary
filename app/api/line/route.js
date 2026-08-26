@@ -41,6 +41,8 @@ async function handle(ev) {
        on conflict (source_id) do update set active = true, title = coalesce(excluded.title, watched.title)`,
       [sourceId, process.env.OWNER_USER_ID, title]
     );
+    // SILENT_JOIN=1 = เข้ากลุ่มเงียบ ๆ ไม่ประกาศตัว (กลุ่มลูกค้าบางกลุ่มไม่อยากให้รู้ว่ามีบอทอ่านอยู่)
+    if (process.env.SILENT_JOIN === '1') return;
     return reply(ev.replyToken, 'สวัสดีครับ ผมเป็นเลขาอัตโนมัติ จะอ่านข้อความในกลุ่มเพื่อสรุปให้เจ้าของบัญชี พิมพ์ "เลขา" ตามด้วยคำถามได้เลยครับ');
   }
 

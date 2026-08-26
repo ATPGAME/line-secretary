@@ -72,6 +72,7 @@ const KEYS = [
   'DASHBOARD_URL',
   'CHAT_MEMORY',
   'CALENDAR_ICS_URL',
+  'SILENT_JOIN',
 ];
 
 const env = {};
