@@ -58,6 +58,40 @@ const CHECKS = {
     }
   },
 
+  // ตรวจ Google Service Account: กุญแจใช้ได้ไหม · แชร์ปฏิทินให้หรือยัง · แชร์โฟลเดอร์ให้หรือยัง
+  async google() {
+    const { hasGoogle, serviceAccount, events, driveSearch } = await import('../lib/google.js');
+    if (!hasGoogle())
+      return bad(
+        'ยังไม่มี GOOGLE_SERVICE_ACCOUNT (หรือ JSON ผิดรูป)',
+        'console.cloud.google.com → Service Accounts → Keys → Add key → JSON แล้วเอาทั้งก้อนใส่ .env.local'
+      );
+
+    const email = serviceAccount().client_email;
+    console.log(`ℹ️  อีเมลของเลขา: ${email}`);
+    console.log('   (ปฏิทิน/โฟลเดอร์ไหนอยากให้เห็น ต้องกดแชร์ให้อีเมลนี้)');
+
+    let good = true;
+    try {
+      const list = await events({ days: 7 });
+      if (list === null) {
+        good = bad('ยังไม่ได้ตั้ง GOOGLE_CALENDAR_ID', 'ใส่อีเมล Google ของตัวเอง แล้วแชร์ปฏิทินให้อีเมลข้างบน');
+      } else ok(`อ่านปฏิทินได้ · 7 วันข้างหน้ามี ${list.length} นัด`);
+    } catch (err) {
+      good = bad(`อ่านปฏิทินไม่ได้: ${err.message}`, 'แชร์ปฏิทินให้อีเมลข้างบนแล้วหรือยัง · เปิด Google Calendar API ในโปรเจคแล้วหรือยัง');
+    }
+
+    try {
+      const files = await driveSearch('', 5);
+      files.length
+        ? ok(`อ่าน Drive ได้ · เห็น ${files.length} ไฟล์ (ล่าสุด: ${files[0].name})`)
+        : console.log('⚠️  ต่อ Drive ได้ แต่ยังไม่เห็นไฟล์ไหนเลย — แชร์โฟลเดอร์ให้อีเมลข้างบนก่อน');
+    } catch (err) {
+      good = bad(`อ่าน Drive ไม่ได้: ${err.message}`, 'เปิด Google Drive API ในโปรเจคแล้วหรือยัง');
+    }
+    return good;
+  },
+
   async vercel(url) {
     if (!url) return bad('ไม่ได้บอก URL', 'node scripts/check.mjs vercel https://xxx.vercel.app');
     const res = await fetch(url.replace(/\/$/, ''), { redirect: 'follow' });
@@ -77,7 +111,7 @@ if (what === 'all') {
   process.exit(results.every(Boolean) ? 0 : 1);
 }
 if (!CHECKS[what]) {
-  console.log('ใช้: node scripts/check.mjs line | openrouter | db | vercel <url> | all');
+  console.log('ใช้: node scripts/check.mjs line | openrouter | db | google | vercel <url> | all');
   process.exit(1);
 }
 process.exit((await CHECKS[what](arg)) ? 0 : 1);

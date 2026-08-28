@@ -8,3 +8,4 @@ vercel.*.json
 deploy-kim.sh
 UPGRADE.md
 to-brain.mjs
+.google-sa.json
