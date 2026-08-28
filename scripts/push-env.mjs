@@ -57,6 +57,7 @@ if (!fs.existsSync('.env.local')) {
 const KEYS = [
   'LINE_CHANNEL_ACCESS_TOKEN',
   'LINE_CHANNEL_SECRET',
+  'LINE_CHANNEL_ID',
   'OPENROUTER_API_KEY',
   'OPENROUTER_MODEL',
   'DATABASE_URL',

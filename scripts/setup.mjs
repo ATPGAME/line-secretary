@@ -27,13 +27,13 @@ await q(SCHEMA);
 const { rows: [t] } = await q(
   `select count(*)::int as n from information_schema.tables
     where table_schema='public'
-      and table_name in ('messages','state','watched','reports','expenses','orders','alerts','people','payments')`
+      and table_name in ('messages','state','watched','reports','expenses','orders','alerts','people','payments','secrets')`
 );
-if (t.n !== 9) {
-  console.error(`❌ สร้างตารางได้ไม่ครบ (${t.n}/9)`);
+if (t.n !== 10) {
+  console.error(`❌ สร้างตารางได้ไม่ครบ (${t.n}/10)`);
   process.exit(1);
 }
-console.log('✅ ฐานข้อมูลพร้อม (9 ตาราง)');
+console.log('✅ ฐานข้อมูลพร้อม (10 ตาราง)');
 
 const url = process.argv[2];
 if (!url) {

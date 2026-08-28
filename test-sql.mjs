@@ -12,9 +12,9 @@ await db.exec(SCHEMA);
 const { rows: [t] } = await q(
   `select count(*)::int as n from information_schema.tables
     where table_schema='public'
-      and table_name in ('messages','state','watched','reports','expenses','orders','alerts','people','payments')`
+      and table_name in ('messages','state','watched','reports','expenses','orders','alerts','people','payments','secrets')`
 );
-assert.equal(t.n, 9, 'ต้องได้ครบ 9 ตาราง');
+assert.equal(t.n, 10, 'ต้องได้ครบ 10 ตาราง');
 
 // รันซ้ำต้องไม่พัง (ผู้ใช้กด setup สองรอบได้)
 await db.exec(SCHEMA);
@@ -251,4 +251,18 @@ const { rows: [money] } = await q(
 assert.equal(money.n, 1);
 assert.equal(money.matched, 1, 'ต้องนับได้ว่าจับคู่ออเดอร์ได้กี่ใบ');
 
-console.log('✅ SQL ผ่านหมด 18 หมวด (รันกับ Postgres จริง)');
+// ── 19. token ที่ระบบต่ออายุเอง — เขียนทับของเดิมได้ ไม่สร้างแถวซ้ำ
+const keep = (token, days) =>
+  q(
+    `insert into secrets (name, value, expires_at, updated_at) values ('line_token',$1,$2,now())
+     on conflict (name) do update set value = $1, expires_at = $2, updated_at = now()`,
+    [token, new Date(Date.now() + days * 86400000)]
+  );
+await keep('token-เก่า', 1);
+await keep('token-ใหม่', 30);
+const { rows: sec } = await q(`select value, expires_at from secrets where name = 'line_token'`);
+assert.equal(sec.length, 1, 'ต้องมีแถวเดียว ไม่สะสม');
+assert.equal(sec[0].value, 'token-ใหม่', 'ต้องได้ตัวล่าสุด');
+assert.ok(new Date(sec[0].expires_at) > new Date(Date.now() + 2 * 86400000), 'ตัวใหม่ต้องเหลืออายุเกิน 2 วัน');
+
+console.log('✅ SQL ผ่านหมด 19 หมวด (รันกับ Postgres จริง)');
