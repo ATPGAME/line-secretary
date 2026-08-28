@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node test.mjs && node test-sql.mjs"
+    "test": "node test.mjs && node test-sql.mjs",
+    "audit": "npm audit --omit=dev --audit-level=moderate",
+    "verify": "npm test && npm run build && npm run audit"
   },
   "engines": {
     "node": ">=22"

@@ -134,6 +134,11 @@ Claude จะพาทำทีละขั้นแบบ wizard **10 ขั้
 | [INSTALL.md](INSTALL.md) | wizard 10 ขั้น — คู่มือสำหรับ Claude Code ที่ช่วยผู้ใช้ติดตั้ง |
 
 `npm test` = เช็คลายเซ็น LINE กับตรรกะ to-do (ไม่ต้องต่อเน็ต ไม่ต้องมี DB)
+
+`npm run audit` = ตรวจช่องโหว่ของ dependency ที่ใช้บน Production · ต้องได้ 0 vulnerabilities
+
+`npm run verify` = รันทดสอบทั้งหมด + production build + security audit ก่อน deploy
+
 เปิดหน้าแรกของเว็บ = ตรวจสุขภาพ บอกเองว่าค่าไหนยังไม่ใส่ / ตารางสร้างหรือยัง
 
 ## ปัญหาที่เจอบ่อย
