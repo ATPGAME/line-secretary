@@ -26,13 +26,13 @@ const dashLink = DASH
   ? `${DASH.replace(/\/$/, '')}/dashboard${process.env.DASHBOARD_PUBLIC === '1' || !process.env.DASHBOARD_KEY ? '' : `?key=${process.env.DASHBOARD_KEY}`}`
   : '';
 
-// 4 ปุ่มเรียงแถวเดียว — กว้าง 2500 สูง 843 คือขนาดเตี้ยที่ LINE รองรับ (ไม่บังจอเยอะ)
+// ปุ่มเรียงแถวเดียว — กว้าง 2500 สูง 843 คือขนาดเตี้ยที่ LINE รองรับ (ไม่บังจอเยอะ)
+// เพิ่ม/ลดปุ่มได้ที่ตาราง BUTTONS ข้างล่าง รูปกับพื้นที่กดปรับตามให้เอง
 const W = 2500;
 const H = 843;
 const BUTTONS = [
   { icon: '📊', label: 'สรุปวันนี้', sub: 'กลุ่มไหนคุยอะไร', text: 'เลขา สรุปวันนี้ให้หน่อย' },
   { icon: '📝', label: 'งานค้าง', sub: 'ที่ยังไม่ได้ทำ', text: 'มีงานอะไรค้างอยู่บ้าง' },
-  { icon: '💸', label: 'รายจ่าย', sub: 'เดือนนี้ใช้ไปเท่าไหร่', text: 'เดือนนี้ใช้เงินไปเท่าไหร่' },
   { icon: '📈', label: 'กระดาน', sub: 'เปิดหน้าสรุป', uri: dashLink },
 ].filter((b) => b.text || b.uri); // ไม่มี URL กระดานก็ตัดปุ่มนั้นทิ้ง
 
@@ -90,7 +90,8 @@ const { richMenuId } = await api('richmenu', {
     name: `${process.env.BOT_NAME || 'เลขา'} ปุ่มลัด`,
     chatBarText: 'เมนูลัด',
     areas: BUTTONS.map((b, i) => ({
-      bounds: { x: i * width, y: 0, width, height: H },
+      // ช่องสุดท้ายกินเศษที่หารไม่ลงตัว ไม่งั้นขอบขวาเหลือแถบที่กดไม่ได้
+      bounds: { x: i * width, y: 0, width: i === BUTTONS.length - 1 ? W - i * width : width, height: H },
       action: b.uri ? { type: 'uri', label: b.label, uri: b.uri } : { type: 'message', label: b.label, text: b.text },
     })),
   }),
