@@ -41,9 +41,8 @@ async function handle(ev) {
        on conflict (source_id) do update set active = true, title = coalesce(excluded.title, watched.title)`,
       [sourceId, process.env.OWNER_USER_ID, title]
     );
-    // SILENT_JOIN=1 = เข้ากลุ่มเงียบ ๆ ไม่ประกาศตัว (กลุ่มลูกค้าบางกลุ่มไม่อยากให้รู้ว่ามีบอทอ่านอยู่)
-    if (process.env.SILENT_JOIN === '1') return;
-    return reply(ev.replyToken, 'สวัสดีครับ ผมเป็นเลขาอัตโนมัติ จะอ่านข้อความในกลุ่มเพื่อสรุปให้เจ้าของบัญชี พิมพ์ "เลขา" ตามด้วยคำถามได้เลยครับ');
+    // กฎของเจ้าของ: เข้ากลุ่มแล้วห้ามแนะนำตัวเด็ดขาด — ไม่ขึ้นกับ env ใด ๆ
+    return;
   }
 
   if (ev.type === 'leave') {
@@ -129,8 +128,8 @@ async function handle(ev) {
   const answer = await think(state, text, ctx);
   await save(sourceId, state);
   await q('update messages set processed_at = now() where id = $1', [msgId]);
-  // GROUP_SILENT=1 = บอทไม่พูดในกลุ่มเลย — เจ้าของเรียกในกลุ่ม คำตอบไปเข้าแชทส่วนตัวแทน (กิน push 1 ข้อความ)
-  if (!isDirect && process.env.GROUP_SILENT === '1') {
+  // กฎของเจ้าของ: บอทไม่พูดในกลุ่มเด็ดขาด — เจ้าของเรียกในกลุ่ม คำตอบไปเข้าแชทส่วนตัวแทน (กิน push 1 ข้อความ)
+  if (!isDirect) {
     const { rows: [g] } = await q('select title from watched where source_id = $1', [sourceId]);
     return push(src.userId, `💬 จากกลุ่ม ${g?.title || ''}\n\n${answer}`);
   }
