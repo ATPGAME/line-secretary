@@ -1,20 +1,19 @@
 import { q } from '@/lib/db';
+import { bkkDate, addDays, thaiWeekday } from '@/lib/brain';
 
 export const dynamic = 'force-dynamic';
 
-const baht = (n) => Number(n || 0).toLocaleString('th-TH', { maximumFractionDigits: 0 });
-
+// กระดานของ Manager — แต่ละกลุ่มต้องการอะไรตอนนี้ · แผนงาน 7 วัน · ปฏิทินนัด Meet · สรุปรายชั่วโมง
+// ข้อมูลมาจาก group_insights (AI วิเคราะห์ทุกรอบเก็บรายชั่วโมง) + reports (สรุปรายชั่วโมง)
 export default async function Dashboard({ searchParams }) {
   const { key, demo } = await searchParams;
   // ponytail: key เส้นเดียวพอสำหรับข้อมูลงาน — ถ้าจะเก็บข้อมูลสุขภาพ/การเงิน ต้องเปลี่ยนเป็น login จริง (ดู DESIGN.md)
-  // ตั้ง DASHBOARD_PUBLIC=1 = เปิดให้ใครก็อ่านได้ (ข้อมูลลูกค้าโผล่หมด — ตั้งใจแล้วค่อยเปิด)
   const locked = process.env.DASHBOARD_PUBLIC !== '1' && key !== process.env.DASHBOARD_KEY;
   if (locked) {
     return (
       <main className="gate">
         <style>{CSS}</style>
-        <div className="gate-card">
-          <img className="gate-logo" src="/avatar.png" alt="" width="56" height="56" />
+        <div className="card gate-card">
           <h1>ต้องมีกุญแจก่อนครับ</h1>
           <p>เติม <code>?key=...</code> ท้าย URL ให้ตรงกับ <code>DASHBOARD_KEY</code></p>
         </div>
@@ -22,463 +21,393 @@ export default async function Dashboard({ searchParams }) {
     );
   }
 
-  // ชื่อ → คิวรี · เลี่ยงการรับผลลัพธ์เป็นลำดับ (สลับตำแหน่งทีเดียวหน้าพังทั้งหน้า โดยไม่มีอะไรเตือน)
-  const data = Object.fromEntries(
-    await Promise.all(Object.entries(QUERIES).map(async ([key, sql]) => [key, (await q(sql)).rows]))
+  const data = demo
+    ? DEMO
+    : Object.fromEntries(
+        await Promise.all(Object.entries(QUERIES).map(async ([k, sql]) => [k, (await q(sql)).rows]))
+      );
+  const { groups, reports, alerts, states } = data;
+
+  const today = bkkDate();
+  const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
+  const lastDay = days.at(-1);
+
+  // ── รวมทุกกลุ่มเป็นรายการเดียว
+  const needs = groups.flatMap((g) =>
+    (g.insight?.needs || []).map((n) => ({ ...n, group: g.title, overdue: n.plan_date < today }))
+  );
+  needs.sort((a, b) => PRI[a.priority] - PRI[b.priority] || isExec(b.from) - isExec(a.from) || a.plan_date.localeCompare(b.plan_date));
+  const meetings = groups
+    .flatMap((g) => (g.insight?.meetings || []).map((m) => ({ ...m, group: g.title })))
+    .filter((m) => m.date >= today && m.date <= lastDay)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+  // งานที่สั่งเลขาในแชทส่วนตัว (มีกำหนด) — ลงแผนด้วย
+  const todos = states.flatMap(({ data: s }) =>
+    (s.todos || []).filter((t) => !t.done && t.due).map((t) => {
+      const [d, time = '09:00'] = String(t.due).split(' ');
+      return { what: t.text, plan_date: d < today ? today : d, plan_slot: slotOf(time), overdue: d < today, todo: true };
+    })
   );
 
-  // &demo=1 = ดูหน้าตาเต็ม ๆ ด้วยข้อมูลสมมุติ (ไม่แตะฐานข้อมูลจริง)
-  const { states, groups, reports, expenses, expDays, orders, paid, alerts, pulse } = demo ? DEMO : data;
+  // ── แผน 7 วัน: วัน × ช่วงเวลา (งานเลยกำหนดยกมาไว้วันนี้)
+  const plan = {};
+  const put = (d, slot, item) => ((plan[`${d}|${slot}`] ||= []).push(item));
+  for (const n of [...needs, ...todos]) put(n.overdue ? today : n.plan_date, n.plan_slot, { kind: n.todo ? 'todo' : 'need', ...n });
+  for (const m of meetings) put(m.date, slotOf(m.time), { kind: 'meet', ...m });
 
-  const spent = expenses.reduce((s, e) => s + Number(e.total), 0);
-  const maxCat = Math.max(1, ...expenses.map((e) => Number(e.total)));
-  const maxDay = Math.max(1, ...expDays.map((e) => Number(e.total)));
-  const todos = states.flatMap(({ source_id, data }) =>
-    (data.todos || []).filter((t) => !t.done).map((t) => ({ ...t, source_id }))
-  );
-  const notes = states.flatMap(({ source_id, data }) =>
-    (data.notes || []).map((n) => ({ ...n, source_id }))
-  );
-  const activeGroups = groups.filter((g) => g.active).length;
-  const p = pulse[0] || {};
-  const now = new Date().toLocaleString('th-TH', {
-    timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-  });
+  const high = needs.filter((n) => n.priority === 'สูง').length;
+  const latest = groups.map((g) => g.insight_at).filter(Boolean).sort().at(-1);
+  const now = fmtTime(new Date());
 
   return (
     <main className="wrap">
       <style>{CSS}</style>
+      <meta httpEquiv="refresh" content="900" />
+      {demo && <div className="demo">👀 โหมดตัวอย่าง — ข้อมูลสมมุติ · ตัด <code>&demo=1</code> ออกเพื่อดูของจริง</div>}
 
-      {demo && <div className="demo-flag">👀 โหมดตัวอย่าง — ข้อมูลสมมุติไว้ดูหน้าตา · ตัดคำว่า <code>&demo=1</code> ออกเพื่อดูข้อมูลจริง</div>}
       <header className="hero">
-        <div className="hero-glow" />
-        <div className="hero-row">
-          <img className="avatar" src="/avatar.png" alt="" width="52" height="52" />
-          <div>
-            <h1>{process.env.BOT_NAME || 'เลขาส่วนตัว'}</h1>
-            <p className="hero-sub">สรุปงานประจำวัน · อัปเดต {now} น.</p>
-          </div>
+        <div>
+          <p className="eyebrow">{process.env.BOT_NAME || 'เลขาของเกม'} · กระดาน Manager</p>
+          <h1>ตอนนี้แต่ละกลุ่มต้องการอะไร</h1>
+          <p className="sub">
+            เปิดดู {now} น. · AI วิเคราะห์ล่าสุด {latest ? `${fmtTime(new Date(latest))} น.` : '—'} · อัปเดตเองทุกชั่วโมง
+          </p>
         </div>
-        <div className="chips">
-          <span className="chip">👀 เฝ้า {activeGroups} กลุ่ม</span>
-          <span className="chip">💬 {p.msgs_today || 0} ข้อความ/24ชม.</span>
-          <span className="chip">📋 รายงาน {p.reports_today || 0} รอบวันนี้</span>
+        <div className="kpis">
+          <Kpi n={high} label="เรื่องสำคัญสูง" tone={high ? 'hot' : ''} />
+          <Kpi n={needs.length} label="สิ่งที่ต้องทำ" />
+          <Kpi n={meetings.length} label="นัด Meet 7 วัน" />
+          <Kpi n={groups.length} label="กลุ่มที่เฝ้า" />
         </div>
       </header>
 
-      <section className="stats">
-        <Stat label="ที่ต้องรู้ทันที" value={p.alerts_today || 0} unit="เรื่องวันนี้" tone={Number(p.alerts_today) ? 'hot' : ''} />
-        <Stat label="งานค้าง" value={todos.length} unit="รายการ" />
-        <Stat label="รายจ่ายเดือนนี้" value={baht(spent)} unit="บาท" />
-        <Stat label="ของที่จดไว้" value={notes.length} unit="โน้ต" />
-      </section>
-
-      <Section title="ที่ต้องรู้ทันที" icon="🚨" count={alerts.length} empty={!alerts.length} emptyText="เงียบดี ไม่มีเรื่องด่วน">
-        <div className="list">
+      {!!alerts.length && (
+        <section className="card alert-strip">
+          <h2>🚨 เรื่องที่ต้องรู้ทันที (24 ชม.)</h2>
           {alerts.map((a, i) => (
-            <div key={i} className={`alert ${ALERT[a.kind]?.cls || 'kw'} ${a.fresh ? 'fresh' : ''}`}>
-              <div className="alert-head">
-                <b>{ALERT[a.kind]?.label || '⚠️ คำต้องห้าม'}</b>
-                <span className="dim">
-                  {a.at} น. · {a.kind === 'health' ? 'ระบบ' : a.title || a.source_id.slice(0, 12) + '…'}
-                </span>
-              </div>
-              {a.detail && <p className="quote">{a.detail}</p>}
-              {a.text && <p className="quote">“{a.text.slice(0, 220)}”</p>}
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <div className="cols">
-        <Section title="งานค้าง" icon="☑️" count={todos.length} empty={!todos.length} emptyText='สั่งได้เลย เช่น "เตือนส่งงานพรุ่งนี้ 10 โมง"'>
-          <div className="list">
-            {todos.map((t) => (
-              <div key={`${t.source_id}-${t.id}`} className="todo">
-                <span className="tick">☐</span>
-                <div>
-                  <p className="todo-text">{t.text}</p>
-                  {t.due && <span className="due">⏱ {t.due}</span>}
-                </div>
-                <span className="idtag">#{t.id}</span>
-              </div>
-            ))}
-          </div>
-        </Section>
-
-        <Section title="ของที่จดไว้" icon="🧠" count={notes.length} empty={!notes.length} emptyText='ทักว่า "จดไว้ ..." ได้เลย'>
-          <div className="list">
-            {notes.map((n, i) => (
-              <div key={i} className="note">
-                <p>{n.text}</p>
-                <span className="dim">
-                  {n.id ? `#${n.id}` : ''}
-                  {n.at && ` · ${new Date(n.at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      </div>
-
-      <Section title="กลุ่มที่เฝ้าอยู่" icon="👀" count={groups.length} empty={!groups.length} emptyText="เชิญคิมเข้ากลุ่มได้เลย">
-        <div className="table">
-          <div className="tr th">
-            <span>กลุ่ม</span><span>ข้อความ</span><span>24 ชม.</span><span>รายงาน</span><span>ล่าสุด</span>
-          </div>
-          {groups.map((g) => (
-            <div key={g.source_id} className="tr">
-              <span className="gname">
-                <i className={g.active ? 'dot on' : 'dot'} />
-                {g.title || g.source_id.slice(0, 14) + '…'}
-              </span>
-              <span>{g.msgs}</span>
-              <span className={Number(g.msgs_today) ? 'strong' : 'dim'}>{g.msgs_today}</span>
-              <span className="dim">{(g.report_hours || []).join(', ')} น.</span>
-              <span className="dim">{g.last_report || '—'}</span>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <div className="cols">
-        <Section title="รายจ่ายเดือนนี้" icon="🧾" badge={`${baht(spent)} บาท`} empty={!expenses.length} emptyText="ส่งสลิปเข้า LINE ได้เลย">
-          <div className="list">
-            {expenses.map((e) => (
-              <div key={e.category} className="bar-row">
-                <div className="bar-top">
-                  <span>{e.category} <span className="dim">({e.n})</span></span>
-                  <b>{baht(e.total)}</b>
-                </div>
-                <div className="bar"><i style={{ width: `${(Number(e.total) / maxCat) * 100}%` }} /></div>
-              </div>
-            ))}
-            {expDays.length > 1 && (
-              <div className="spark">
-                <p className="dim">รายวัน</p>
-                <div className="spark-bars">
-                  {expDays.map((d) => (
-                    <div key={d.d} className="spark-col" title={`${d.d} — ${baht(d.total)} บาท`}>
-                      <i style={{ height: `${Math.max(6, (Number(d.total) / maxDay) * 100)}%` }} />
-                      <span>{d.d}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </Section>
-
-        <Section title="ออเดอร์ล่าสุด" icon="📦" count={orders.length} empty={!orders.length} emptyText="เปิด track_orders ในกลุ่มที่รับออเดอร์">
-          {Number(paid[0]?.n) > 0 && (
-            <p className="dim" style={{ marginBottom: 10 }}>
-              💰 เงินเข้าเดือนนี้ {paid[0].n} ใบ · รวม {baht(paid[0].total)} บาท
+            <p key={i}>
+              <b>{a.at}</b> · {a.title || 'ระบบ'} — {a.kind === 'sla' ? 'มีคำถามค้างไม่มีคนตอบ' : a.kind === 'keyword' ? 'เจอคำต้องจับตา' : 'ระบบ'}
+              {a.text ? `: “${a.text.slice(0, 120)}”` : a.detail ? `: ${a.detail.slice(0, 120)}` : ''}
             </p>
-          )}
-          <div className="list">
-            {orders.map((o) => (
-              <div key={o.id} className="order">
-                <div>
-                  <b>{o.customer || 'ไม่ระบุชื่อ'}</b>
-                  <p className="dim">{(o.items || []).join(', ') || '—'}</p>
-                </div>
-                <div className="order-right">
-                  {o.amount && <b className="amount">{baht(o.amount)} ฿</b>}
-                  <span className="dim">{o.paid ? '✅ จ่ายแล้ว · ' : ''}{o.at}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      </div>
+          ))}
+        </section>
+      )}
 
-      <Section title="สรุปบทสนทนา" icon="📋" count={reports.length} empty={!reports.length} emptyText='รอรอบ 8 โมง / 6 โมงเย็น หรือพิมพ์ "เลขา สรุปให้หน่อย" ในกลุ่ม'>
-        {Object.entries(Object.groupBy(reports, (r) => r.day)).map(([day, items]) => (
-          <div key={day} className="day-block">
-            <div className="day-head">
-              <span className="day-pill">
-                {new Date(day).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', month: 'short' })}
-              </span>
-              <span className="dim">{items.reduce((s, r) => s + Number(r.msgs), 0)} ข้อความ · {items.length} รายงาน</span>
-            </div>
-            {items.map((r) => (
-              <article key={r.id} className="report">
-                <div className="report-head">
-                  <b>{r.title || r.source_id.slice(0, 14) + '…'}</b>
-                  <span className="dim">{r.at} น. · {r.msgs} ข้อความ</span>
-                </div>
-                <p className="report-body">{r.summary}</p>
-              </article>
-            ))}
+      {/* ── 1. ต้องทำตอนนี้ */}
+      <Section title="ต้องทำตอนนี้" hint="เรียงตามความสำคัญ · เรื่องที่ผู้บริหารขอขึ้นก่อน" count={needs.length}>
+        {needs.length ? (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr><th>สำคัญ</th><th>ต้องทำอะไร</th><th>กลุ่ม</th><th>ใครขอ → ใครทำ</th><th>ลงมือ</th><th>สถานะ</th></tr>
+              </thead>
+              <tbody>
+                {needs.map((n, i) => (
+                  <tr key={i}>
+                    <td><span className={`pri p${PRI[n.priority]}`}>{n.priority}</span></td>
+                    <td className="what">{n.what}{n.why && <small>{n.why}</small>}</td>
+                    <td className="nowrap">{n.group}</td>
+                    <td className="nowrap">
+                      {n.from}{isExec(n.from) && <span className="exec">ผู้บริหาร</span>} → {n.owner || '—'}
+                    </td>
+                    <td className="nowrap">
+                      {n.overdue ? <span className="late">เลยกำหนด</span> : dayLabel(n.plan_date, today)} · {n.plan_slot}
+                    </td>
+                    <td className="nowrap"><span className="state">{n.state}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))}
+        ) : <Empty text="ไม่มีงานค้างจากทุกกลุ่ม 🎉" />}
       </Section>
 
-      <footer className="foot">ข้อมูลสด ๆ จาก Neon ทุกครั้งที่เปิดหน้านี้</footer>
+      {/* ── 2. แต่ละกลุ่ม */}
+      <Section title="แต่ละกลุ่มตอนนี้" hint="สภาพกลุ่ม · หัวข้อที่คุย · สรุปรอบล่าสุด" count={groups.length}>
+        <div className="groups">
+          {groups.map((g) => {
+            const gi = g.insight || {};
+            const open = (gi.needs || []).length;
+            return (
+              <article key={g.source_id} className="card group">
+                <div className="group-head">
+                  <h3>{g.title || g.source_id.slice(0, 10)}</h3>
+                  <span className={`dot ${Number(g.msgs_24h) ? 'live' : ''}`}>{Number(g.msgs_24h) || 0} ข้อความ/24ชม.</span>
+                </div>
+                <p className="status">{gi.status || 'ยังไม่มีบทสนทนาให้วิเคราะห์'}</p>
+                <div className="meta">
+                  {open ? <span className="tag hot">ต้องทำ {open}</span> : <span className="tag ok">ไม่มีงานค้าง</span>}
+                  {g.last_at && <span className="tag">ล่าสุด {g.last_at}</span>}
+                </div>
+                {!!gi.topics?.length && (
+                  <ul className="topics">
+                    {gi.topics.map((t, i) => (
+                      <li key={i}><b>{t.title}</b>{t.detail && <span> — {t.detail}</span>}</li>
+                    ))}
+                  </ul>
+                )}
+                {g.last_summary && (
+                  <details>
+                    <summary>สรุปรอบล่าสุด {g.last_summary_at} น.</summary>
+                    <p className="pre">{g.last_summary}</p>
+                  </details>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </Section>
+
+      {/* ── 3. แผน 7 วัน */}
+      <Section title="ตารางวางแผน 7 วัน" hint="AI จัดวันให้ตามความสำคัญ · 🔴 สูง 🟡 กลาง ⚪ ต่ำ · 📅 นัด Meet · ☑️ งานที่สั่งเลขา">
+        <div className="table-wrap">
+          <table className="tbl plan">
+            <thead><tr><th>วัน</th>{SLOTS.map((s) => <th key={s}>{s}</th>)}</tr></thead>
+            <tbody>
+              {days.map((d) => (
+                <tr key={d} className={isWeekend(d) ? 'weekend' : ''}>
+                  <td className="nowrap day">{dayLabel(d, today)}<small>{short(d)}</small></td>
+                  {SLOTS.map((s) => (
+                    <td key={s}>
+                      {(plan[`${d}|${s}`] || []).map((it, i) => (
+                        <div key={i} className={`chip ${it.kind} p${PRI[it.priority] ?? 1}`}>
+                          {it.kind === 'meet' ? `📅 ${it.time} ${it.title}` : `${it.kind === 'todo' ? '☑️' : PRI_ICON[it.priority]} ${it.what}`}
+                          {it.group && <small>{it.group}</small>}
+                        </div>
+                      ))}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      {/* ── 4. ปฏิทิน Meet */}
+      <Section title="ปฏิทินนัด Meet" hint="“นัดแล้ว” = ตกลงกันในแชท · “เสนอ” = เลขาแนะนำให้คุยสด · กดเพิ่มลง Google Calendar แล้วใส่ Google Meet ได้" count={meetings.length}>
+        <div className="cal">
+          {days.map((d) => {
+            const list = meetings.filter((m) => m.date === d);
+            return (
+              <div key={d} className={`cal-day ${d === today ? 'today' : ''} ${isWeekend(d) ? 'weekend' : ''}`}>
+                <div className="cal-head">{thaiWeekday(d).replace('วัน', '')}<small>{short(d)}</small></div>
+                {list.length ? list.map((m, i) => (
+                  <div key={i} className={`meet ${m.confirmed ? 'yes' : ''}`}>
+                    <div className="meet-time">{m.time} · {m.minutes} นาที</div>
+                    <b>{m.title}</b>
+                    {!!m.with?.length && <small>กับ {m.with.join(', ')}</small>}
+                    {m.why && <small className="why">{m.why}</small>}
+                    <div className="meet-foot">
+                      <span className={`tag ${m.confirmed ? 'ok' : ''}`}>{m.confirmed ? 'นัดแล้ว' : 'เสนอ'}</span>
+                      <a href={gcal(m)} target="_blank" rel="noreferrer">+ Google Calendar</a>
+                    </div>
+                  </div>
+                )) : <p className="none">—</p>}
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      {/* ── 5. สรุปรายชั่วโมง */}
+      <Section title="สรุปรายชั่วโมง (24 ชม.)" hint="สรุปทุกกลุ่มที่มีข้อความใหม่ในแต่ละรอบ" count={reports.length}>
+        {reports.length ? (
+          <ol className="timeline">
+            {reports.map((r, i) => (
+              <li key={i}>
+                <span className="t">{r.at}</span>
+                <details>
+                  <summary><b>{r.title}</b> · {r.msgs} ข้อความ</summary>
+                  <p className="pre">{r.summary}</p>
+                </details>
+              </li>
+            ))}
+          </ol>
+        ) : <Empty text="ยังไม่มีรอบสรุปใน 24 ชม." />}
+      </Section>
+
+      <footer>ข้อมูลสดจากฐานข้อมูลทุกครั้งที่เปิด · หน้านี้รีเฟรชเองทุก 15 นาที</footer>
     </main>
   );
 }
 
-function Stat({ label, value, unit, tone = '' }) {
-  return (
-    <div className={`stat ${tone}`}>
-      <p className="stat-label">{label}</p>
-      <p className="stat-value">{value} <span>{unit}</span></p>
+// ── ส่วนประกอบเล็ก ๆ
+const Section = ({ title, hint, count, children }) => (
+  <section className="section">
+    <div className="section-head">
+      <h2>{title}{count != null && <span className="count">{count}</span>}</h2>
+      {hint && <p>{hint}</p>}
     </div>
-  );
+    {children}
+  </section>
+);
+const Kpi = ({ n, label, tone = '' }) => (
+  <div className={`kpi ${tone}`}><b>{n}</b><span>{label}</span></div>
+);
+const Empty = ({ text }) => <p className="empty card">{text}</p>;
+
+// ── ตัวช่วย
+const SLOTS = ['เช้า', 'บ่าย', 'เย็น'];
+const PRI = { สูง: 0, กลาง: 1, ต่ำ: 2 };
+const PRI_ICON = { สูง: '🔴', กลาง: '🟡', ต่ำ: '⚪' };
+const EXEC = /^n$/i; // N = ผู้บริหาร (ดู ORG ใน lib/persona.js)
+const isExec = (name) => (EXEC.test(String(name || '').trim()) ? 1 : 0);
+const slotOf = (t) => (t < '12:00' ? 'เช้า' : t < '16:00' ? 'บ่าย' : 'เย็น');
+const short = (d) => `${Number(d.slice(8))}/${Number(d.slice(5, 7))}`;
+const isWeekend = (d) => [0, 6].includes(new Date(`${d}T12:00:00Z`).getUTCDay());
+const dayLabel = (d, today) =>
+  d === today ? 'วันนี้' : d === addDays(today, 1) ? 'พรุ่งนี้' : `${thaiWeekday(d).replace('วัน', '')} ${short(d)}`;
+const fmtTime = (t) =>
+  t.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+// ลิงก์เปิดหน้าสร้างนัดใน Google Calendar (ใส่ Google Meet ต่อได้ในหน้านั้น)
+function gcal(m) {
+  const start = new Date(`${m.date}T${m.time}:00+07:00`);
+  const end = new Date(start.getTime() + m.minutes * 60e3);
+  const z = (t) => t.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const p = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: m.title,
+    dates: `${z(start)}/${z(end)}`,
+    details: [m.why, m.with?.length ? `ผู้เข้าร่วม: ${m.with.join(', ')}` : '', `จากกลุ่ม: ${m.group}`].filter(Boolean).join('\n'),
+    ctz: 'Asia/Bangkok',
+  });
+  return `https://calendar.google.com/calendar/render?${p}`;
 }
 
-function Section({ title, icon, count, badge, empty, emptyText, children }) {
-  return (
-    <section className="card">
-      <div className="card-head">
-        <h2><span className="ico">{icon}</span>{title}</h2>
-        {badge ? <span className="badge">{badge}</span> : count != null && <span className="badge">{count}</span>}
-      </div>
-      {empty ? <p className="empty">{emptyText}</p> : children}
-    </section>
-  );
-}
+const QUERIES = {
+  groups: `select w.source_id, w.title, i.data as insight, i.updated_at as insight_at,
+                  (select count(*) from messages m where m.source_id = w.source_id and m.ts > now() - interval '24 hours') as msgs_24h,
+                  (select to_char(max(m.ts) at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') from messages m where m.source_id = w.source_id) as last_at,
+                  r.summary as last_summary, to_char(r.created_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as last_summary_at
+             from watched w
+             left join group_insights i using (source_id)
+             left join lateral (select summary, created_at from reports r where r.source_id = w.source_id order by created_at desc limit 1) r on true
+            where w.active
+            order by jsonb_array_length(coalesce(i.data->'needs', '[]')) desc, w.title`,
+  reports: `select w.title, r.summary, to_char(r.created_at at time zone 'Asia/Bangkok', 'HH24:MI') as at,
+                   (select count(*) from messages m where m.source_id = r.source_id and m.ts between r.period_start and r.period_end) as msgs
+              from reports r left join watched w using (source_id)
+             where r.created_at > now() - interval '24 hours'
+             order by r.created_at desc limit 60`,
+  alerts: `select a.kind, w.title, m.text, a.detail, to_char(a.created_at at time zone 'Asia/Bangkok', 'HH24:MI') as at
+             from alerts a
+             left join watched w using (source_id)
+             left join messages m on m.line_message_id = a.ref
+            where a.created_at > now() - interval '24 hours' and a.kind in ('sla', 'keyword', 'system')
+            order by a.created_at desc limit 10`,
+  states: `select data from state where source_id like 'U%'`,
+};
+
+// &demo=1 — ดูหน้าตาเต็ม ๆ โดยไม่แตะฐานข้อมูล
+const D = bkkDate();
+const DEMO = {
+  groups: [
+    {
+      source_id: 'Cdemo1', title: 'FOR ASSISTANT', msgs_24h: 12, last_at: '24/09 10:12', insight_at: new Date().toISOString(),
+      last_summary: 'N สั่งตามลูกค้า 2 เคสเรื่องขายพ่วง และให้เปลี่ยนรูปโปรโมท\nต้องทำ: ตามลูกค้า · เปลี่ยนรูป', last_summary_at: '24/09 10:05',
+      insight: {
+        status: 'N รอความคืบหน้าเรื่องขายพ่วง 2 เคส ทีมรอรูปโปรใหม่',
+        needs: [
+          { what: 'ตามลูกค้า 2 เคสเรื่องรับคู่/ขายพ่วง', from: 'N', owner: 'คุณเกม', priority: 'สูง', why: 'ผู้บริหารสั่งตรง', plan_date: D, plan_slot: 'เช้า', state: 'รอทำ' },
+          { what: 'เปลี่ยนรูปโปรโมทสินค้าตามที่ N สั่ง', from: 'N', owner: 'ทีมกราฟิก', priority: 'สูง', why: '', plan_date: addDays(D, 1), plan_slot: 'บ่าย', state: 'กำลังทำ' },
+        ],
+        topics: [{ title: 'คอมเมนต์โพสต์โปรเก่า', detail: 'ตกลงลบโพสต์แล้ว' }],
+        meetings: [{ title: 'อัปเดตแผนขายพ่วง Q4', why: 'N ต้องการเห็นภาพรวม', with: ['N', 'คุณเกม'], date: addDays(D, 1), time: '14:00', minutes: 30, confirmed: false }],
+      },
+    },
+    {
+      source_id: 'Cdemo2', title: 'DATA MARKETING', msgs_24h: 3, last_at: '24/09 09:40', insight_at: new Date().toISOString(),
+      insight: {
+        status: 'ฝุ่นทดสอบระบบบนเครื่องตัวเอง ยังไม่ขึ้นเซิร์ฟเวอร์กลาง',
+        needs: [{ what: 'นัดฝุ่นขึ้นระบบทดสอบให้ทีมเข้าถึง', from: 'N', owner: 'ฝุ่น', priority: 'กลาง', why: '', plan_date: addDays(D, 2), plan_slot: 'เช้า', state: 'รอคำตอบ' }],
+        topics: [{ title: 'ทดสอบระบบ', detail: 'รันบน Local Host' }],
+        meetings: [],
+      },
+    },
+  ],
+  reports: [{ title: 'FOR ASSISTANT', summary: 'N สั่งตามลูกค้า 2 เคส', at: '10:05', msgs: 8 }],
+  alerts: [],
+  states: [],
+};
 
 const CSS = `
-:root{
-  --p700:#5B21B6; --p600:#6D28D9; --p500:#7C3AED; --p400:#A78BFA;
-  --p100:#EDE9FE; --p50:#F6F3FF; --line:#EAE4FA;
-  --ink:#231238; --muted:#7C7192; --hot:#E11D48; --warn:#D97706;
-}
+:root{--bg:#f6f5fb;--card:#fff;--ink:#1d1b2b;--mute:#6b6880;--line:#e7e4f0;--brand:#6d4aff;--brand-soft:#efeaff;
+--hot:#e5484d;--hot-soft:#fdecec;--warn:#b7791f;--warn-soft:#fff5dc;--ok:#1f9d63;--ok-soft:#e5f6ee;--meet:#2563eb;--meet-soft:#e8efff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121119;--card:#1b1a24;--ink:#ecebf5;--mute:#a09db5;--line:#2c2a3a;
+--brand:#9b86ff;--brand-soft:#2a2342;--hot:#ff6b6f;--hot-soft:#3a1e22;--warn:#f0b64a;--warn-soft:#352b17;--ok:#4cc38a;--ok-soft:#173026;--meet:#7aa2ff;--meet-soft:#1c2744}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--p50);color:var(--ink);
-  font-family:"Noto Sans Thai","IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",sans-serif;
-  line-height:1.65;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 64px}
-h1,h2{margin:0}
-p{margin:0}
-.dim{color:var(--muted);font-size:13px}
-.strong{font-weight:700;color:var(--p600)}
-
-/* hero */
-.hero{position:relative;overflow:hidden;border-radius:24px;padding:26px 24px;
-  background:linear-gradient(135deg,var(--p700) 0%,var(--p500) 55%,#9F67F0 100%);
-  color:#fff;box-shadow:0 18px 40px -18px rgba(91,33,182,.55)}
-.hero::before{content:'';position:absolute;inset:0;background:url('/hero.jpg') center/cover no-repeat;
-  opacity:.85;mix-blend-mode:screen;pointer-events:none}
-.hero-glow{position:absolute;inset:auto -60px -120px auto;width:280px;height:280px;border-radius:50%;
-  background:rgba(255,255,255,.16);filter:blur(10px)}
-.hero-row{display:flex;align-items:center;gap:14px;position:relative}
-.hero h1{font-size:26px;letter-spacing:-.02em}
-.hero-sub{color:rgba(255,255,255,.82);font-size:14px}
-.avatar{width:52px;height:52px;border-radius:16px;object-fit:cover;flex:none;
-  background:rgba(255,255,255,.9);border:1px solid rgba(255,255,255,.5);
-  box-shadow:0 6px 16px -8px rgba(0,0,0,.5)}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;position:relative}
-.chip{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.25);
-  padding:5px 12px;border-radius:999px;font-size:13px}
-
-/* stats */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-top:16px}
-.stat{background:#fff;border:1px solid var(--line);border-radius:18px;padding:16px 18px;
-  box-shadow:0 6px 18px -14px rgba(91,33,182,.5)}
-.stat-label{font-size:13px;color:var(--muted)}
-.stat-value{font-size:26px;font-weight:800;color:var(--p600);letter-spacing:-.02em;margin-top:2px}
-.stat-value span{font-size:13px;font-weight:500;color:var(--muted)}
-.stat.hot{background:linear-gradient(180deg,#FFF1F4,#fff);border-color:#FBD5DE}
-.stat.hot .stat-value{color:var(--hot)}
-
-/* cards */
-.card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:18px 20px;margin-top:16px;
-  box-shadow:0 8px 24px -20px rgba(91,33,182,.6)}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
-.card h2{font-size:16px;display:flex;align-items:center;gap:8px}
-.ico{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:9px;background:var(--p100)}
-.badge{background:var(--p100);color:var(--p700);font-size:12px;font-weight:700;
-  padding:3px 10px;border-radius:999px;white-space:nowrap}
-.empty{color:var(--muted);font-size:14px;padding:6px 0 2px}
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.cols>.card{margin-top:16px}
-.list{display:flex;flex-direction:column;gap:10px}
-
-/* alerts */
-.alert{border-left:3px solid var(--warn);background:#FFFBF3;border-radius:0 12px 12px 0;padding:10px 14px}
-.alert.kw{border-color:var(--hot);background:#FFF5F7}
-.alert.sys{border-color:var(--p500);background:var(--p50)}
-.alert.fresh{box-shadow:0 0 0 3px rgba(225,29,72,.07)}
-.alert-head{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;justify-content:space-between}
-.alert-head b{font-size:14px}
-.quote{margin-top:4px;font-size:14px;color:#4A3A63}
-
-/* todo / note */
-.todo{display:flex;gap:10px;align-items:flex-start;background:var(--p50);border:1px solid var(--line);
-  border-radius:12px;padding:10px 12px}
-.tick{color:var(--p500);font-size:16px;line-height:1.4}
-.todo-text{font-size:14px}
-.due{font-size:12px;color:var(--p600);background:var(--p100);padding:1px 8px;border-radius:999px}
-.idtag{margin-left:auto;font-size:12px;color:var(--muted)}
-.note{background:var(--p50);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px}
-
-/* table */
-.table{display:flex;flex-direction:column}
-.tr{display:grid;grid-template-columns:2.2fr .8fr .8fr 1.2fr 1fr;gap:8px;align-items:center;
-  padding:9px 4px;border-bottom:1px solid var(--line);font-size:14px}
-.tr.th{font-size:12px;color:var(--muted);border-bottom:2px solid var(--p100);font-weight:600}
-.tr:last-child{border-bottom:none}
-.gname{display:flex;align-items:center;gap:8px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
-.dot{width:8px;height:8px;border-radius:50%;background:#D7CEEA;flex:none}
-.dot.on{background:#22C55E;box-shadow:0 0 0 3px rgba(34,197,94,.16)}
-
-/* bars */
-.bar-row{display:flex;flex-direction:column;gap:5px}
-.bar-top{display:flex;justify-content:space-between;font-size:14px}
-.bar{height:9px;border-radius:999px;background:var(--p100);overflow:hidden}
-.bar i{display:block;height:100%;border-radius:999px;
-  background:linear-gradient(90deg,var(--p600),var(--p400))}
-.spark{margin-top:8px;border-top:1px dashed var(--line);padding-top:10px}
-.spark-bars{display:flex;align-items:flex-end;gap:4px;height:76px;margin-top:6px}
-.spark-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:4px}
-.spark-col i{display:block;width:100%;border-radius:5px 5px 2px 2px;
-  background:linear-gradient(180deg,var(--p400),var(--p600))}
-.spark-col span{font-size:10px;color:var(--muted)}
-
-/* orders */
-.order{display:flex;justify-content:space-between;gap:12px;background:var(--p50);
-  border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px}
-.order-right{text-align:right;display:flex;flex-direction:column}
-.amount{color:var(--p600)}
-
-/* reports */
-.day-block{margin-top:14px}
-.day-head{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-.day-pill{background:var(--p600);color:#fff;font-size:12px;font-weight:700;padding:3px 12px;border-radius:999px}
-.report{border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;background:#fff}
-.report-head{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:baseline;
-  border-bottom:1px dashed var(--line);padding-bottom:6px;margin-bottom:8px}
-.report-body{white-space:pre-wrap;font-size:14px;color:#3A2B52}
-
-.demo-flag{background:#FFF7E6;border:1px dashed #E9C46A;color:#7A5A12;font-size:13px;
-  padding:8px 14px;border-radius:12px;margin-bottom:12px}
-.foot{text-align:center;color:var(--muted);font-size:12px;margin-top:28px}
-
-/* gate */
-.gate{min-height:100vh;display:grid;place-items:center;padding:24px;
-  background:linear-gradient(135deg,var(--p700),var(--p500))}
-.gate-card{background:#fff;border-radius:22px;padding:32px;text-align:center;max-width:380px;
-  box-shadow:0 24px 60px -30px rgba(0,0,0,.5)}
-.gate-logo{width:56px;height:56px;border-radius:18px;margin:0 auto 14px;object-fit:cover;
-  background:var(--p100);display:block}
-.gate-card h1{font-size:19px;margin-bottom:6px}
-.gate-card p{font-size:14px;color:var(--muted)}
-code{background:var(--p100);color:var(--p700);padding:1px 6px;border-radius:6px;font-size:13px}
-
-@media (max-width:760px){
-  .cols{grid-template-columns:1fr}
-  .tr{grid-template-columns:1.6fr .7fr .7fr;font-size:13px}
-  .tr>span:nth-child(4),.tr>span:nth-child(5){display:none}
-  .hero h1{font-size:22px}
-}
+body{background:var(--bg);color:var(--ink);font-family:'Noto Sans Thai',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:24px 16px 48px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+h1,h2,h3{margin:0}
+.hero{display:flex;flex-wrap:wrap;gap:20px;justify-content:space-between;align-items:flex-end;margin-bottom:20px}
+.eyebrow{margin:0 0 4px;color:var(--brand);font-weight:700;font-size:13px;letter-spacing:.02em}
+.hero h1{font-size:clamp(22px,3.4vw,30px);font-weight:800}
+.sub{margin:6px 0 0;color:var(--mute);font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(88px,1fr));gap:8px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--mute)}
+.kpi.hot{border-color:var(--hot);background:var(--hot-soft)}.kpi.hot b{color:var(--hot)}
+.alert-strip{padding:14px 16px;margin-bottom:20px;border-color:var(--hot);background:var(--hot-soft)}
+.alert-strip h2{font-size:15px;margin-bottom:6px}.alert-strip p{margin:4px 0;font-size:14px}
+.section{margin-top:28px}
+.section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;margin-bottom:10px}
+.section-head h2{font-size:18px;font-weight:800}
+.section-head p{margin:0;color:var(--mute);font-size:13px}
+.count{margin-left:8px;font-size:12px;background:var(--brand-soft);color:var(--brand);border-radius:99px;padding:2px 8px;vertical-align:middle}
+.table-wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{text-align:left;font-size:12px;color:var(--mute);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl tr:last-child td{border-bottom:0}
+.what{min-width:240px}.what small{display:block;color:var(--mute);font-size:12px;margin-top:2px}
+.nowrap{white-space:nowrap}
+.pri{font-size:12px;font-weight:700;border-radius:6px;padding:2px 8px}
+.p0{background:var(--hot-soft);color:var(--hot)}.p1{background:var(--warn-soft);color:var(--warn)}.p2{background:var(--line);color:var(--mute)}
+.exec{margin-left:6px;font-size:11px;background:var(--ink);color:var(--card);border-radius:4px;padding:1px 6px}
+.late{color:var(--hot);font-weight:700}
+.state{font-size:12px;color:var(--mute)}
+.groups{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+.group{padding:16px}
+.group-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.group h3{font-size:16px}
+.dot{font-size:12px;color:var(--mute);white-space:nowrap}.dot.live::before{content:'●';color:var(--ok);margin-right:4px}
+.status{margin:8px 0;font-size:14px;line-height:1.55}
+.meta{display:flex;flex-wrap:wrap;gap:6px}
+.tag{font-size:12px;border-radius:6px;padding:2px 8px;background:var(--line);color:var(--mute)}
+.tag.hot{background:var(--hot-soft);color:var(--hot)}.tag.ok{background:var(--ok-soft);color:var(--ok)}
+.topics{margin:10px 0 0;padding-left:18px;font-size:13px;line-height:1.6}.topics span{color:var(--mute)}
+details{margin-top:10px;font-size:13px}summary{cursor:pointer;color:var(--brand);font-weight:600}
+.pre{white-space:pre-wrap;margin:6px 0 0;line-height:1.6;color:var(--ink)}
+.plan td{min-width:170px}.plan .day{min-width:84px;font-weight:700}.plan .day small{display:block;color:var(--mute);font-weight:400}
+.plan tr.weekend td{background:color-mix(in srgb,var(--line) 35%,transparent)}
+.chip{font-size:13px;line-height:1.45;border-radius:8px;padding:6px 8px;margin-bottom:6px;border-left:3px solid var(--line);background:var(--bg)}
+.chip small{display:block;color:var(--mute);font-size:11px}
+.chip.need.p0{border-left-color:var(--hot)}.chip.need.p1{border-left-color:var(--warn)}
+.chip.meet{border-left-color:var(--meet);background:var(--meet-soft)}.chip.todo{border-left-color:var(--brand)}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.cal-day{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:140px}
+.cal-day.today{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
+.cal-day.weekend{opacity:.7}
+.cal-head{font-weight:800;font-size:14px;margin-bottom:8px}.cal-head small{margin-left:6px;color:var(--mute);font-weight:400}
+.meet{background:var(--meet-soft);border-radius:8px;padding:8px;margin-bottom:6px;font-size:13px;border:1px dashed var(--meet)}
+.meet.yes{border-style:solid}
+.meet small{display:block;color:var(--mute);font-size:12px}.meet .why{margin-top:2px}
+.meet-time{color:var(--meet);font-weight:700;font-size:12px}
+.meet-foot{display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px}
+.meet-foot a{font-size:12px;color:var(--meet);font-weight:600;text-decoration:none}
+.none{color:var(--mute);margin:0}
+.timeline{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--line);border-radius:14px}
+.timeline li{display:flex;gap:12px;padding:10px 14px;border-bottom:1px solid var(--line)}.timeline li:last-child{border-bottom:0}
+.timeline .t{font-variant-numeric:tabular-nums;color:var(--mute);font-size:13px;min-width:44px;padding-top:1px}
+.timeline details{margin:0;flex:1}.timeline summary{color:var(--ink);font-weight:400}
+.empty{padding:16px;color:var(--mute);margin:0}
+.demo{background:var(--warn-soft);color:var(--warn);padding:8px 12px;border-radius:10px;margin-bottom:12px;font-size:13px}
+footer{margin-top:32px;text-align:center;color:var(--mute);font-size:12px}
+.gate{min-height:100vh;display:grid;place-items:center;padding:16px}.gate-card{padding:28px;text-align:center;max-width:380px}
+.gate-card p{color:var(--mute)}
+@media (max-width:820px){.kpis{grid-template-columns:repeat(2,1fr);width:100%}.cal{grid-template-columns:1fr}.cal-day{min-height:0}.groups{grid-template-columns:1fr}}
 `;
-
-// ข้อมูลสมมุติสำหรับดูหน้าตา — เปิดด้วย &demo=1 (ไม่แตะฐานข้อมูลจริง)
-const QUERIES = {
-  states: 'select source_id, data, updated_at from state order by updated_at desc',
-
-  groups: `select w.*,
-             (select count(*) from messages m where m.source_id = w.source_id) as msgs,
-             (select count(*) from messages m where m.source_id = w.source_id
-                and m.ts > now() - interval '24 hours') as msgs_today,
-             to_char(w.last_report_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as last_report
-        from watched w order by w.active desc, msgs desc`,
-
-  reports: `select r.*, w.title,
-              to_char(r.created_at at time zone 'Asia/Bangkok', 'YYYY-MM-DD') as day,
-              to_char(r.created_at at time zone 'Asia/Bangkok', 'HH24:MI') as at,
-              (select count(*) from messages m
-                where m.source_id = r.source_id and m.ts between r.period_start and r.period_end) as msgs
-         from reports r left join watched w using (source_id)
-        order by r.created_at desc limit 60`,
-
-  expenses: `select coalesce(category,'อื่น ๆ') as category, sum(amount) as total, count(*) as n
-               from expenses where paid_at > date_trunc('month', now()) group by 1 order by total desc`,
-
-  expDays: `select to_char(paid_at at time zone 'Asia/Bangkok', 'DD') as d, sum(amount) as total
-              from expenses where paid_at > date_trunc('month', now()) group by 1 order by 1`,
-
-  orders: `select o.*, o.paid_at is not null as paid,
-             to_char(o.ordered_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at
-        from orders o order by o.ordered_at desc limit 20`,
-
-  paid: `select coalesce(sum(amount),0) as total, count(*)::int as n
-           from payments where created_at > date_trunc('month', now())`,
-
-  alerts: `select a.kind, a.source_id, w.title, m.text, a.detail,
-             to_char(a.created_at at time zone 'Asia/Bangkok', 'DD/MM HH24:MI') as at,
-             a.created_at > now() - interval '24 hours' as fresh
-        from alerts a
-        left join watched w using (source_id)
-        left join messages m on m.line_message_id = a.ref
-       order by a.created_at desc limit 20`,
-
-  pulse: `select (select count(*) from messages where ts > now() - interval '24 hours') as msgs_today,
-                 (select count(*) from alerts   where created_at > now() - interval '24 hours') as alerts_today,
-                 (select count(*) from reports  where created_at > now() - interval '24 hours') as reports_today`,
-};
-
-const ALERT = {
-  sla: { cls: 'sla', label: '⏰ ถามค้าง ยังไม่มีใครตอบ' },
-  keyword: { cls: 'kw', label: '⚠️ คำต้องห้าม' },
-  health: { cls: 'sys', label: '🩺 ระบบมีปัญหา' },
-};
-
-const DEMO = {
-  states: [
-    { source_id: 'Udemo', updated_at: new Date(), data: {
-      todos: [
-        { id: 1, text: 'ส่งใบเสนอราคาโซลาร์ให้ร้านกาแฟละมุน', due: 'พรุ่งนี้ 10:00' },
-        { id: 2, text: 'อัดคลิปบทที่ 4 คอร์ส Claude Code' },
-        { id: 3, text: 'โทรหาช่างเรื่องคิวติดตั้งหลังคาโกดัง', due: 'ศุกร์นี้' },
-      ],
-      notes: [
-        { id: 1, at: new Date().toISOString(), text: 'รหัส wifi ออฟฟิศ: bizdrive2569' },
-        { id: 2, at: new Date().toISOString(), text: 'ค่าแผงโซลาร์ล็อตใหม่ 4,150 บาท/แผง ส่งฟรีเกิน 20 แผง' },
-      ] } },
-  ],
-  groups: [
-    { source_id: 'C1', title: 'ทีมติดตั้งโซลาร์', active: true, msgs: 1284, msgs_today: 96, report_hours: [8, 18], last_report: '26/08 08:02' },
-    { source_id: 'C2', title: 'ลูกค้า — โกดังบางนา', active: true, msgs: 431, msgs_today: 12, report_hours: [8, 18], last_report: '26/08 08:02' },
-    { source_id: 'C3', title: 'นักเรียนคอร์ส AI รุ่น 7', active: true, msgs: 2650, msgs_today: 214, report_hours: [8, 20], last_report: '25/08 20:01' },
-    { source_id: 'C4', title: 'ซัพพลายเออร์แผง', active: false, msgs: 88, msgs_today: 0, report_hours: [8], last_report: '19/08 08:03' },
-  ],
-  reports: [
-    { id: 1, source_id: 'C1', title: 'ทีมติดตั้งโซลาร์', day: '2026-08-26', at: '08:02', msgs: 96,
-      summary: '• ช่างเอกแจ้งงานโกดังบางนาเสร็จ 80% เหลือเดินสาย DC ฝั่งตะวันตก คาดจบพรุ่งนี้เย็น\n• ต้องตัดสินใจ: อินเวอร์เตอร์ที่สั่งมาผิดรุ่น (5kW แทน 8kW) ช่างถามว่าจะรอของใหม่ 5 วัน หรือใช้ 5kW ไปก่อน — รอเจ้าของเคาะ\n• ค่าใช้จ่ายหน้างานวันนี้ 3,480 บาท (ค่ารถเครน + น้ำมัน)' },
-    { id: 2, source_id: 'C3', title: 'นักเรียนคอร์ส AI รุ่น 7', day: '2026-08-26', at: '08:02', msgs: 214,
-      summary: '• 6 คนติดขั้นตอนต่อ MCP กับ Claude Code — อาการเดียวกันหมด (ลืม restart หลังแก้ config)\n• คุณแนนถามเรื่องใบเสร็จหัก ณ ที่จ่าย ยังไม่มีใครตอบ 3 ชั่วโมง\n• เสียงตอบรับบทที่ 3 ดีมาก มี 4 คนขอให้ทำบทเสริมเรื่อง subagent' },
-    { id: 3, source_id: 'C2', title: 'ลูกค้า — โกดังบางนา', day: '2026-08-25', at: '18:01', msgs: 34,
-      summary: '• ลูกค้าถามความคืบหน้าและขอรูปหน้างานทุกวัน\n• ขอเลื่อนวันตรวจรับจาก 30 ส.ค. เป็น 2 ก.ย.\n• ยังไม่ได้โอนงวด 2 (150,000 บาท) — แจ้งว่าจะโอนต้นสัปดาห์หน้า' },
-  ],
-  expenses: [
-    { category: 'ค่าแรงช่าง', total: 42500, n: 9 },
-    { category: 'วัสดุ/อุปกรณ์', total: 31800, n: 14 },
-    { category: 'ค่าเดินทาง', total: 8650, n: 22 },
-    { category: 'โฆษณา', total: 6000, n: 3 },
-    { category: 'อื่น ๆ', total: 2140, n: 7 },
-  ],
-  expDays: [
-    { d: '18', total: 4200 }, { d: '19', total: 11800 }, { d: '20', total: 2600 },
-    { d: '21', total: 9400 }, { d: '22', total: 15200 }, { d: '23', total: 3100 },
-    { d: '24', total: 7600 }, { d: '25', total: 22800 }, { d: '26', total: 3480 },
-  ],
-  orders: [
-    { id: 1, customer: 'ร้านกาแฟละมุน', items: ['แผง 550W x 12', 'อินเวอร์เตอร์ 5kW'], amount: 168000, at: '26/08 09:14' },
-    { id: 2, customer: 'คุณเอ๋ ปทุมธานี', items: ['ชุดออนกริด 3kW'], amount: 89000, at: '25/08 16:40' },
-    { id: 3, customer: 'โกดังบางนา (งวด 2)', items: ['ติดตั้ง 20kW'], amount: 150000, at: '24/08 11:02' },
-  ],
-  paid: [{ n: 3, total: 12800 }],
-  alerts: [
-    { kind: 'keyword', source_id: 'C2', title: 'ลูกค้า — โกดังบางนา', at: '26/08 13:41', fresh: true,
-      text: 'ถ้าเลื่อนอีกรอบผมขอยกเลิกสัญญาแล้วนะครับ รอมาสองอาทิตย์แล้ว' },
-    { kind: 'sla', source_id: 'C3', title: 'นักเรียนคอร์ส AI รุ่น 7', at: '26/08 10:15', fresh: true,
-      text: 'ขอถามหน่อยค่ะ ใบเสร็จหัก ณ ที่จ่าย 3% ต้องออกในนามบริษัทไหนคะ' },
-    { kind: 'keyword', source_id: 'C1', title: 'ทีมติดตั้งโซลาร์', at: '25/08 17:22', fresh: false,
-      text: 'ของมาผิดรุ่นครับ ด่วนมาก พรุ่งนี้ทีมเข้าหน้างานแล้ว' },
-  ],
-  pulse: [{ msgs_today: 322, alerts_today: 2, reports_today: 2 }],
-};
