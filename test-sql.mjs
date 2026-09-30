@@ -273,10 +273,10 @@ const sell = (date, product, amount, channel = '') =>
      do update set amount = excluded.amount, units = excluded.units, created_at = now()`,
     [date, product, channel, amount]
   );
-await sell('2026-09-21', 'สินค้า A', 1000);
-await sell('2026-09-22', 'สินค้า A', 1500);
-await sell('2026-09-22', 'สินค้า A', 2000); // แก้ยอด
-await sell('2026-09-22', 'สินค้า A', 500, 'TikTok'); // ช่องทางอื่น = แถวใหม่
+await sell('2026-09-21', 'Beta Oil', 1000);
+await sell('2026-09-22', 'Beta Oil', 1500);
+await sell('2026-09-22', 'Beta Oil', 2000); // แก้ยอด
+await sell('2026-09-22', 'Beta Oil', 500, 'TikTok'); // ช่องทางอื่น = แถวใหม่
 const { rows: [day] } = await q(
   `select coalesce(sum(amount) filter (where sale_date = $2), 0) as today,
           coalesce(sum(amount) filter (where sale_date = $2::date - 1), 0) as prev
@@ -293,4 +293,22 @@ const { rows: salesRows } = await q(
 );
 assert.deepEqual(salesRows.map((r) => [r.d, r.amount]), [['2026-09-21', 1000], ['2026-09-22', 2500]], 'สรุปรายวันต้องได้ วันที่เป็นข้อความ ยอดเป็นตัวเลข');
 
-console.log('✅ SQL ผ่านหมด 20 หมวด (รันกับ Postgres จริง)');
+// ── 21. บอร์ดงาน — ค่า default · done_at ตามสถานะ · งานเสร็จเก่าเกินไม่โชว์
+const { rows: [task] } = await q(
+  `insert into tasks (title, checklist, source) values ('KPI รายทีม', $1, 'board') returning *`,
+  [JSON.stringify([{ text: 'Ads', done: false }])]
+);
+assert.equal(task.status, 'todo');
+assert.equal(task.priority, 'กลาง');
+assert.equal(task.checklist[0].text, 'Ads');
+await q(`update tasks set status = 'done', done_at = coalesce(done_at, now()) where id = $1`, [task.id]);
+await q(`insert into tasks (title, status, done_at) values ('งานเก่า', 'done', now() - interval '30 days')`);
+const { rows: board } = await q(
+  `select id, title, due::text as due from tasks
+    where status <> 'done' or done_at > now() - ($1 || ' days')::interval
+    order by case priority when 'สูง' then 0 when 'กลาง' then 1 else 2 end, due nulls last, id`,
+  [14]
+);
+assert.deepEqual(board.map((b) => b.title), ['KPI รายทีม'], 'งานเสร็จเกิน 14 วันต้องไม่โชว์บนบอร์ด');
+
+console.log('✅ SQL ผ่านหมด 21 หมวด (รันกับ Postgres จริง)');

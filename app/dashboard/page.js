@@ -72,6 +72,7 @@ export default async function Dashboard({ searchParams }) {
           <p className="sub">
             เปิดดู {now} น. · AI วิเคราะห์ล่าสุด {latest ? `${fmtTime(new Date(latest))} น.` : '—'} · อัปเดตเองทุกชั่วโมง
           </p>
+          <a className="board-link" href={`/board${key ? `?key=${key}` : ''}`}>📌 บอร์ดติดตามงานของฉัน →</a>
         </div>
         <div className="kpis">
           <Kpi n={high} label="เรื่องสำคัญสูง" tone={high ? 'hot' : ''} />
@@ -346,6 +347,7 @@ h1,h2,h3{margin:0}
 .eyebrow{margin:0 0 4px;color:var(--brand);font-weight:700;font-size:13px;letter-spacing:.02em}
 .hero h1{font-size:clamp(22px,3.4vw,30px);font-weight:800}
 .sub{margin:6px 0 0;color:var(--mute);font-size:13px}
+.board-link{display:inline-block;margin-top:10px;font-size:14px;font-weight:700;color:var(--brand);text-decoration:none;background:var(--brand-soft);padding:6px 12px;border-radius:99px}
 .kpis{display:grid;grid-template-columns:repeat(4,minmax(88px,1fr));gap:8px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .kpi b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
