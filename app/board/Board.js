@@ -12,6 +12,9 @@ const TEAMS = ['Ads', 'Content', 'Graphic', 'Data Analysis', 'Admin', 'Productio
 
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 const short = (d) => (d ? `${Number(d.slice(8))}/${Number(d.slice(5, 7))}` : '');
+// ช่องวันที่รับเฉพาะปี ค.ศ. ช่วงนี้ — กันพิมพ์ปี พ.ศ. ลงไป (เซิร์ฟเวอร์ตรวจซ้ำอีกชั้น)
+const DMIN = `${new Date().getFullYear() - 1}-01-01`;
+const DMAX = `${new Date().getFullYear() + 5}-12-31`;
 // นับวันจากวันที่ล้วน ๆ (ไม่ใช้เวลา) กันคลาดเพราะเขตเวลา
 const daysLeft = (d) => (d ? Math.round((Date.parse(d) - Date.parse(today())) / 864e5) : null);
 function dueInfo(t, left) {
@@ -121,7 +124,7 @@ export default function Board({ initial, apiKey, botName }) {
         </select>
         <label className="duebox">
           วันส่ง
-          <input type="date" value={draft.due} onChange={(e) => setDraft({ ...draft, due: e.target.value })} />
+          <input type="date" min={DMIN} max={DMAX} value={draft.due} onChange={(e) => setDraft({ ...draft, due: e.target.value })} />
         </label>
         <button type="submit">เพิ่ม</button>
       </form>
@@ -236,7 +239,7 @@ function Card({ t, open, onToggle, onDrag, onPatch, onDelete, teams }) {
               <option value="">ทีม —</option>
               {teams.map((x) => <option key={x}>{x}</option>)}
             </select>
-            <input type="date" value={t.due || ''} onChange={(e) => onPatch({ due: e.target.value })} aria-label="กำหนดส่ง" />
+            <input type="date" min={DMIN} max={DMAX} value={t.due || ''} onChange={(e) => onPatch({ due: e.target.value })} aria-label="กำหนดส่ง" />
           </div>
           <button className="del" onClick={onDelete}>ลบงาน</button>
         </div>
