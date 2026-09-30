@@ -320,4 +320,15 @@ const { rows: soon } = await q(
 );
 assert.deepEqual(soon.map((s) => [s.title, s.left]), [['เลยแล้ว', -2], ['พรุ่งนี้', 1]], 'ต้องได้เฉพาะงานใกล้ส่ง พร้อมจำนวนวันเป็นตัวเลข');
 
+// XP ของงานเสร็จเก่า (หลุดบอร์ด) — ต้องนับขั้นตอนย่อยที่ติ๊กจาก jsonb ได้
+await q(`insert into tasks (title, status, priority, done_at, checklist) values ('เก่า', 'done', 'สูง', now() - interval '20 days', $1)`,
+  [JSON.stringify([{ text: 'a', done: true }, { text: 'b', done: false }])]);
+const { rows: [xp] } = await q(
+  `select coalesce(sum(case priority when 'สูง' then 150 when 'กลาง' then 100 else 50 end
+            + 10 * (select count(*) from jsonb_array_elements(checklist) e where (e->>'done')::boolean)), 0)::int as xp
+     from tasks where status = 'done' and done_at <= now() - ($1 || ' days')::interval`,
+  [14]
+);
+assert.equal(xp.xp, 150 + 10 + 100, 'XP งานเก่า = สูง 150 + ด่าน 10 + งานเก่าหมวดก่อน (กลาง) 100');
+
 console.log('✅ SQL ผ่านหมด 21 หมวด (รันกับ Postgres จริง)');
