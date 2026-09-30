@@ -311,4 +311,13 @@ const { rows: board } = await q(
 );
 assert.deepEqual(board.map((b) => b.title), ['KPI รายทีม'], 'งานเสร็จเกิน 14 วันต้องไม่โชว์บนบอร์ด');
 
+// เตือนงานใกล้ส่ง — เอาเฉพาะที่ยังไม่เสร็จ วันส่ง <= วันนี้+3 · left เป็นตัวเลข (เลยกำหนด = ติดลบ)
+await q(`insert into tasks (title, due) values ('เลยแล้ว', date '2026-09-28'), ('พรุ่งนี้', date '2026-10-01'), ('อีกไกล', date '2026-10-20')`);
+const { rows: soon } = await q(
+  `select title, due - $1::date as left from tasks
+    where status <> 'done' and due is not null and due <= $1::date + 3 order by due`,
+  ['2026-09-30']
+);
+assert.deepEqual(soon.map((s) => [s.title, s.left]), [['เลยแล้ว', -2], ['พรุ่งนี้', 1]], 'ต้องได้เฉพาะงานใกล้ส่ง พร้อมจำนวนวันเป็นตัวเลข');
+
 console.log('✅ SQL ผ่านหมด 21 หมวด (รันกับ Postgres จริง)');

@@ -8,10 +8,23 @@ const COLS = [
   { id: 'done', th: 'เสร็จแล้ว' },
 ];
 const PRI = ['สูง', 'กลาง', 'ต่ำ'];
-const TEAMS = ['Ads', 'Content', 'Graphic', 'ทุกทีม'];
+const TEAMS = ['Ads', 'Content', 'Graphic', 'Data Analysis', 'Admin', 'Production', 'CEO', 'ทุกทีม'];
 
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
 const short = (d) => (d ? `${Number(d.slice(8))}/${Number(d.slice(5, 7))}` : '');
+// นับวันจากวันที่ล้วน ๆ (ไม่ใช้เวลา) กันคลาดเพราะเขตเวลา
+const daysLeft = (d) => (d ? Math.round((Date.parse(d) - Date.parse(today())) / 864e5) : null);
+function dueInfo(t, left) {
+  if (!t.due) return { text: 'ยังไม่กำหนดวันส่ง', cls: 'none-set' };
+  const day = `ส่ง ${short(t.due)}`;
+  if (t.status === 'done') return { text: day, cls: '' };
+  if (left < 0) return { text: `${day} · เลย ${-left} วัน`, cls: 'bad' };
+  if (left === 0) return { text: `${day} · วันนี้!`, cls: 'bad' };
+  if (left <= 2) return { text: `${day} · เหลือ ${left} วัน`, cls: 'soon' };
+  return { text: `${day} · เหลือ ${left} วัน`, cls: '' };
+}
+// ในคอลัมน์: ใกล้ส่งก่อน · ไม่มีวันส่งไว้ท้าย · วันเท่ากันเรียงความสำคัญ
+const byDue = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || PRI.indexOf(a.priority) - PRI.indexOf(b.priority);
 
 export default function Board({ initial, apiKey, botName }) {
   const [tasks, setTasks] = useState(initial);
@@ -70,6 +83,8 @@ export default function Board({ initial, apiKey, botName }) {
   const teams = [...new Set([...TEAMS, ...tasks.map((t) => t.team).filter(Boolean)])];
   const open = tasks.filter((t) => t.status !== 'done');
   const late = open.filter((t) => t.due && t.due < today()).length;
+  const soon = open.filter((t) => t.due && daysLeft(t.due) >= 0 && daysLeft(t.due) <= 2).length;
+  const noDue = open.filter((t) => !t.due).length;
   const dash = `/dashboard${apiKey ? `?key=${apiKey}` : ''}`;
 
   return (
@@ -81,8 +96,11 @@ export default function Board({ initial, apiKey, botName }) {
           <h1>งานของคุณเกม</h1>
           <p className="sub">
             ค้าง {open.length} · สำคัญสูง {open.filter((t) => t.priority === 'สูง').length}
-            {late ? <span className="late"> · เลยกำหนด {late}</span> : null} · สั่งผ่าน LINE ได้: “เพิ่มงาน …” / “งาน #3 เสร็จแล้ว”
+            {late ? <span className="late"> · เลยกำหนด {late}</span> : null}
+            {soon ? <span className="soon"> · ใกล้ส่ง (≤2 วัน) {soon}</span> : null}
+            {noDue ? <span> · ยังไม่มีวันส่ง {noDue}</span> : null}
           </p>
+          <p className="sub">🔔 LINE เตือนงานใกล้ส่งทุกเช้า · สั่งผ่าน LINE ได้: “เพิ่มงาน …” / “งาน #3 ส่ง 10/10” / “งาน #3 เสร็จแล้ว”</p>
         </div>
         <a className="link" href={dash}>← กระดานกลุ่ม</a>
       </header>
@@ -101,7 +119,10 @@ export default function Board({ initial, apiKey, botName }) {
         <select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })} aria-label="ความสำคัญ">
           {PRI.map((p) => <option key={p}>{p}</option>)}
         </select>
-        <input type="date" value={draft.due} onChange={(e) => setDraft({ ...draft, due: e.target.value })} aria-label="กำหนดส่ง" />
+        <label className="duebox">
+          วันส่ง
+          <input type="date" value={draft.due} onChange={(e) => setDraft({ ...draft, due: e.target.value })} />
+        </label>
         <button type="submit">เพิ่ม</button>
       </form>
 
@@ -116,7 +137,7 @@ export default function Board({ initial, apiKey, botName }) {
 
       <section className="cols">
         {COLS.map((c) => {
-          const list = shown.filter((t) => t.status === c.id);
+          const list = shown.filter((t) => t.status === c.id).sort(byDue);
           return (
             <div
               key={c.id}
@@ -149,7 +170,8 @@ export default function Board({ initial, apiKey, botName }) {
 function Card({ t, open, onToggle, onDrag, onPatch, onDelete, teams }) {
   const list = t.checklist || [];
   const done = list.filter((c) => c.done).length;
-  const late = t.status !== 'done' && t.due && t.due < today();
+  const left = daysLeft(t.due);
+  const due = dueInfo(t, left);
   const [item, setItem] = useState('');
   const setList = (next) => onPatch({ checklist: next });
 
@@ -159,10 +181,10 @@ function Card({ t, open, onToggle, onDrag, onPatch, onDelete, teams }) {
         <div className="tags">
           <span className={`pri p${PRI.indexOf(t.priority)}`}>{t.priority}</span>
           {t.team && <span className="tag">{t.team}</span>}
-          {t.due && <span className={`tag ${late ? 'bad' : ''}`}>{late ? 'เลย ' : 'ส่ง '}{short(t.due)}</span>}
           <span className="id">#{t.id}</span>
         </div>
         <b>{t.title}</b>
+        <span className={`due ${due.cls}`}>📅 {due.text}</span>
         {!!list.length && (
           <div className="bar" title={`${done}/${list.length}`}>
             <i style={{ width: `${(done / list.length) * 100}%` }} />
@@ -236,13 +258,14 @@ h1,h2{margin:0}
 .top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
 .eyebrow{margin:0 0 4px;color:var(--brand);font-weight:700;font-size:13px}
 .top h1{font-size:clamp(22px,3.4vw,30px);font-weight:800}
-.sub{margin:6px 0 0;color:var(--mute);font-size:13px}.late{color:var(--hot);font-weight:700}
+.sub{margin:6px 0 0;color:var(--mute);font-size:13px}.late{color:var(--hot);font-weight:700}.soon{color:var(--warn);font-weight:700}
 .link{color:var(--brand);font-weight:600;text-decoration:none;font-size:14px}
 input,select,textarea,button{font:inherit;color:var(--ink)}
 input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
 button{cursor:pointer}
 .add{display:flex;flex-wrap:wrap;gap:8px;padding:10px}
 .add .grow{flex:1 1 260px}
+.duebox{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mute)}
 .add button[type=submit]{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:8px 18px;font-weight:700}
 .filters{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0}
 .filters button{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:4px 12px;font-size:13px;color:var(--mute)}
@@ -264,6 +287,7 @@ button{cursor:pointer}
 .pri.p0{background:var(--hot-soft);color:var(--hot);font-weight:700}.pri.p1{background:var(--warn-soft);color:var(--warn)}.pri.p2{background:var(--line);color:var(--mute)}
 .tag{background:var(--brand-soft);color:var(--brand)}.tag.bad{background:var(--hot-soft);color:var(--hot);font-weight:700}
 .id{margin-left:auto;font-size:11px;color:var(--mute)}
+.due{display:block;margin-top:6px;font-size:12px;color:var(--mute)}.due.soon{color:var(--warn);font-weight:700}.due.bad{color:var(--hot);font-weight:700}.due.none-set{font-style:italic;opacity:.75}
 .bar{position:relative;height:6px;background:var(--line);border-radius:9px;margin-top:8px}
 .bar i{position:absolute;inset:0 auto 0 0;background:var(--ok);border-radius:9px}
 .bar small{position:absolute;right:0;top:6px;font-size:10px;color:var(--mute)}
