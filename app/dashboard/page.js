@@ -72,7 +72,8 @@ export default async function Dashboard({ searchParams }) {
           <p className="sub">
             เปิดดู {now} น. · AI วิเคราะห์ล่าสุด {latest ? `${fmtTime(new Date(latest))} น.` : '—'} · อัปเดตเองทุกชั่วโมง
           </p>
-          <a className="board-link" href={`/board${key ? `?key=${key}` : ''}`}>📌 บอร์ดติดตามงานของฉัน →</a>
+          <a className="board-link" href={`/board${key ? `?key=${key}` : ''}`}>📌 บอร์ดติดตามงานของฉัน →</a>{' '}
+          <a className="board-link" href={`/calendar${key ? `?key=${key}` : ''}`}>📅 ตารางทั้งปี →</a>
         </div>
         <div className="kpis">
           <Kpi n={high} label="เรื่องสำคัญสูง" tone={high ? 'hot' : ''} />

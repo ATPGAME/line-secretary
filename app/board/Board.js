@@ -156,7 +156,10 @@ export default function Board({ initial, xpBase = 0, apiKey, botName }) {
           <Stat icon="⏳" n={soon} label="ใกล้หมดเวลา ≤2 วัน" tone={soon ? 'soon' : ''} />
           <Stat icon="🏆" n={cleared} label="เคลียร์ 14 วัน" tone="ok" />
         </div>
-        <a className="back" href={dash}>🗺️ แผนที่กลุ่ม</a>
+        <nav className="back">
+          <a href={dash}>🗺️ แผนที่กลุ่ม</a>
+          <a href={dash.replace('/dashboard', '/calendar')}>📅 ตารางทั้งปี</a>
+        </nav>
       </header>
 
       {/* ── คอนโซลเพิ่มเควสต์ */}
@@ -377,7 +380,7 @@ background:radial-gradient(circle at 30% 30%,#2b3563,#141827);border:2px solid v
 .stat span{font-size:11px;color:var(--mute)}
 .stat.boss{border-color:var(--red);box-shadow:0 0 16px rgba(255,77,94,.35)}.stat.boss b{color:var(--red)}
 .stat.soon b{color:var(--gold)}.stat.ok b{color:var(--lime)}
-.back{align-self:start;color:var(--cyan);text-decoration:none;font:600 13px var(--disp);white-space:nowrap}
+.back{align-self:start;display:grid;gap:6px}.back a{color:var(--cyan);text-decoration:none;font:600 13px var(--disp);white-space:nowrap}
 
 /* คอนโซล */
 .console{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px}
