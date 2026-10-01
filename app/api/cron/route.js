@@ -7,14 +7,19 @@ export const maxDuration = 300; // สรุปหลายกลุ่มใช
 // ทีม Pro: เปลี่ยน schedule เป็น */10 * * * * แล้วตั้ง env CRON_FREQUENT=1 → ได้สรุปตาม report_hours + เตือนลูกค้าถามค้าง (ไม่ต้องใช้ Railway)
 // กดเองก็ได้: /api/cron?key=DASHBOARD_KEY
 export async function GET(req) {
-  const key = new URL(req.url).searchParams.get('key');
+  const url = new URL(req.url);
+  const key = url.searchParams.get('key');
+  // ?mode=collect = รอบเก็บรายชั่วโมง (GitHub Actions ยิงมา) — สรุปขึ้นกระดานทุกรอบ push LINE เฉพาะ report_hours
+  const collect = url.searchParams.get('mode') === 'collect';
   const fromVercel = req.headers.get('authorization') === `Bearer ${process.env.CRON_SECRET}`;
   const byHand = process.env.DASHBOARD_KEY && key === process.env.DASHBOARD_KEY;
   if (!fromVercel && !byHand) return new Response('unauthorized', { status: 401 });
 
   try {
     // วันละครั้ง = force (พลาดรอบไม่ได้) · ยิงถี่ = เคารพ report_hours · กดเอง = สรุปเดี๋ยวนี้
-    const result = await runJobs({ force: byHand || process.env.CRON_FREQUENT !== '1' });
+    const result = await runJobs(
+      collect ? { collect: true } : { force: byHand || process.env.CRON_FREQUENT !== '1' }
+    );
     return Response.json({ ok: true, ...result });
   } catch (err) {
     console.error('cron failed:', err.message);

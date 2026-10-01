@@ -265,4 +265,70 @@ assert.equal(sec.length, 1, 'ต้องมีแถวเดียว ไม�
 assert.equal(sec[0].value, 'token-ใหม่', 'ต้องได้ตัวล่าสุด');
 assert.ok(new Date(sec[0].expires_at) > new Date(Date.now() + 2 * 86400000), 'ตัวใหม่ต้องเหลืออายุเกิน 2 วัน');
 
-console.log('✅ SQL ผ่านหมด 19 หมวด (รันกับ Postgres จริง)');
+// ── 20. ยอดขาย — ส่งยอดวัน/สินค้า/ช่องทางเดิมซ้ำ = แก้ยอด ไม่บวกซ้ำ
+const sell = (date, product, amount, channel = '') =>
+  q(
+    `insert into sales (user_id, sale_date, product, channel, amount, units) values ('Uowner',$1,$2,$3,$4,null)
+     on conflict (user_id, sale_date, product, channel)
+     do update set amount = excluded.amount, units = excluded.units, created_at = now()`,
+    [date, product, channel, amount]
+  );
+await sell('2026-09-21', 'Beta Oil', 1000);
+await sell('2026-09-22', 'Beta Oil', 1500);
+await sell('2026-09-22', 'Beta Oil', 2000); // แก้ยอด
+await sell('2026-09-22', 'Beta Oil', 500, 'TikTok'); // ช่องทางอื่น = แถวใหม่
+const { rows: [day] } = await q(
+  `select coalesce(sum(amount) filter (where sale_date = $2), 0) as today,
+          coalesce(sum(amount) filter (where sale_date = $2::date - 1), 0) as prev
+     from sales where user_id = $1 and sale_date between $2::date - 1 and $2::date`,
+  ['Uowner', '2026-09-22']
+);
+assert.equal(Number(day.today), 2500, 'วันเดียวกันรวมทุกช่องทาง และใช้ยอดที่แก้แล้ว');
+assert.equal(Number(day.prev), 1000, 'ต้องได้ยอดวันก่อนไว้เทียบ');
+const { rows: salesRows } = await q(
+  `select sale_date::text as d, product, sum(amount)::float8 as amount
+     from sales where user_id = $1 and sale_date between $2 and $3
+    group by 1, 2 order by 1, 2`,
+  ['Uowner', '2026-09-15', '2026-09-22']
+);
+assert.deepEqual(salesRows.map((r) => [r.d, r.amount]), [['2026-09-21', 1000], ['2026-09-22', 2500]], 'สรุปรายวันต้องได้ วันที่เป็นข้อความ ยอดเป็นตัวเลข');
+
+// ── 21. บอร์ดงาน — ค่า default · done_at ตามสถานะ · งานเสร็จเก่าเกินไม่โชว์
+const { rows: [task] } = await q(
+  `insert into tasks (title, checklist, source) values ('KPI รายทีม', $1, 'board') returning *`,
+  [JSON.stringify([{ text: 'Ads', done: false }])]
+);
+assert.equal(task.status, 'todo');
+assert.equal(task.priority, 'กลาง');
+assert.equal(task.checklist[0].text, 'Ads');
+await q(`update tasks set status = 'done', done_at = coalesce(done_at, now()) where id = $1`, [task.id]);
+await q(`insert into tasks (title, status, done_at) values ('งานเก่า', 'done', now() - interval '30 days')`);
+const { rows: board } = await q(
+  `select id, title, due::text as due from tasks
+    where status <> 'done' or done_at > now() - ($1 || ' days')::interval
+    order by case priority when 'สูง' then 0 when 'กลาง' then 1 else 2 end, due nulls last, id`,
+  [14]
+);
+assert.deepEqual(board.map((b) => b.title), ['KPI รายทีม'], 'งานเสร็จเกิน 14 วันต้องไม่โชว์บนบอร์ด');
+
+// เตือนงานใกล้ส่ง — เอาเฉพาะที่ยังไม่เสร็จ วันส่ง <= วันนี้+3 · left เป็นตัวเลข (เลยกำหนด = ติดลบ)
+await q(`insert into tasks (title, due) values ('เลยแล้ว', date '2026-09-28'), ('พรุ่งนี้', date '2026-10-01'), ('อีกไกล', date '2026-10-20')`);
+const { rows: soon } = await q(
+  `select title, due - $1::date as left from tasks
+    where status <> 'done' and due is not null and due <= $1::date + 3 order by due`,
+  ['2026-09-30']
+);
+assert.deepEqual(soon.map((s) => [s.title, s.left]), [['เลยแล้ว', -2], ['พรุ่งนี้', 1]], 'ต้องได้เฉพาะงานใกล้ส่ง พร้อมจำนวนวันเป็นตัวเลข');
+
+// XP ของงานเสร็จเก่า (หลุดบอร์ด) — ต้องนับขั้นตอนย่อยที่ติ๊กจาก jsonb ได้
+await q(`insert into tasks (title, status, priority, done_at, checklist) values ('เก่า', 'done', 'สูง', now() - interval '20 days', $1)`,
+  [JSON.stringify([{ text: 'a', done: true }, { text: 'b', done: false }])]);
+const { rows: [xp] } = await q(
+  `select coalesce(sum(case priority when 'สูง' then 150 when 'กลาง' then 100 else 50 end
+            + 10 * (select count(*) from jsonb_array_elements(checklist) e where (e->>'done')::boolean)), 0)::int as xp
+     from tasks where status = 'done' and done_at <= now() - ($1 || ' days')::interval`,
+  [14]
+);
+assert.equal(xp.xp, 150 + 10 + 100, 'XP งานเก่า = สูง 150 + ด่าน 10 + งานเก่าหมวดก่อน (กลาง) 100');
+
+console.log('✅ SQL ผ่านหมด 21 หมวด (รันกับ Postgres จริง)');
