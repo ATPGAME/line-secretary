@@ -150,8 +150,8 @@ export default function Calendar({ initial, startMonth, today, apiKey, botName }
                 {monthCells(y, i + 1).map((d) => {
                   const list = byDate[d] || [];
                   const out = !d.startsWith(mm);
-                  const cls = [
-                    out && 'out',
+                  // ช่องของเดือนข้างเคียง = ช่องว่างเปล่า ไม่ระบายสี (ไม่งั้นนัดต้นเดือนหน้าไปโผล่ท้ายเดือนนี้)
+                  const cls = out ? 'out' : [
                     d === today && 'today',
                     list.some((e) => e.kind === 'วันหยุด') && 'hol',
                     list.some((e) => e.kind !== 'วันหยุด') && 'busy',
